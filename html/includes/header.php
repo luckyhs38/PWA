@@ -333,7 +333,7 @@ $is_logged_in = isset($_SESSION['user_id']);
 
         <li class="nav-item">
           <a class="nav-link <?= $current === 'cal.php' ? 'active' : '' ?>"
-             href="/cal.php">일정</a>
+             href="/cal/cal.php">일정</a>
         </li>
 
         <!-- 공개글 드롭다운 -->
@@ -474,7 +474,7 @@ $is_logged_in = isset($_SESSION['user_id']);
     </li>
 
     <li>
-      <a href="/cal.php" onclick="closeMobileMenu()">일정</a>
+      <a href="/cal/cal.php" onclick="closeMobileMenu()">일정</a>
     </li>
 
     <!-- 공개글 아코디언 (기존 사이트 방식) -->
