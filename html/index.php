@@ -4,7 +4,7 @@ include "./includes/db.php";
 ?>
 <style>
 .bg-home {
-  background-image: url('/img/bg.webp');
+  background-image: url('/img/main.png');
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
