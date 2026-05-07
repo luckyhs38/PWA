@@ -21,8 +21,26 @@ $is_logged_in = isset($_SESSION['user_id']);
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@300;400;500&family=Noto+Sans+KR:wght@300;400;500&display=swap" rel="stylesheet">
   <!-- 커스텀 CSS -->
   <link href="/css/style.css" rel="stylesheet">
+  <!-- Bootstrap CSS -->
+  <link rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css">
 
-  <style>
+  <!-- Summernote CSS -->
+  <link rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-bs4.min.css">
+
+  <!-- jQuery -->
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Summernote JS -->
+  <script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-bs4.min.js"></script>
+
+  <!-- Korean -->
+  <script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/lang/summernote-ko-KR.min.js"></script>
+    <style>
     body {
       font-family: 'Noto Sans KR', sans-serif;
       font-weight: 300;
@@ -31,6 +49,28 @@ $is_logged_in = isset($_SESSION['user_id']);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
+    }
+
+    /* 로고 이미지 스타일 */
+    nav.navbar .navbar-brand {
+        padding: 0; /* 패딩 초기화 */
+        display: flex;
+        align-items: center;
+    }
+
+    .navbar-logo {
+        height: 40px;      /* 데스크탑 기준 높이 (적절히 조절하세요) */
+        width: auto;       /* 가로 비율 유지 */
+        object-fit: contain;
+        transition: height 0.3s;
+    }
+
+    /* 모바일 화면에서 로고 크기 조정 */
+    @media (max-width: 991.98px) {
+        .navbar-logo {
+            
+            height: 32px;  /* 모바일에서 조금 더 작게 설정 */
+        }
     }
 
     /* =====================
@@ -307,8 +347,10 @@ $is_logged_in = isset($_SESSION['user_id']);
   <div class="container">
 
     <!-- 로고 -->
-    <a class="navbar-brand" href="/index.php">한글은 늘 도망가</a>
-
+    <!-- <a class="navbar-brand" href="/index.php">한글은 늘 도망가</a> -->
+    <a class="navbar-brand" href="/index.php">
+      <img src="/img/logo.png" alt="한글은 늘 도망가" class="navbar-logo">
+    </a>
     <!-- 모바일: 햄버거 버튼 (오른쪽) -->
     <button class="navbar-toggler border-0 d-lg-none"
             type="button"
@@ -582,4 +624,4 @@ $is_logged_in = isset($_SESSION['user_id']);
 </script>
 
 <!-- 본문 시작 -->
-<main class="flex-fill d-flex align-items-center">
+<!-- <main class="flex-fill d-flex align-items-center"> -->
