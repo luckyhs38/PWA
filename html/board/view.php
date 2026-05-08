@@ -37,6 +37,31 @@ try {
     $stmt->execute([':board_id' => $id]);
     $images = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+    // 5. 댓글 + 대댓글 목록 가져오기
+    $comment_sql = "
+        SELECT 
+            c.id,
+            c.board_id,
+            c.user_id,
+            c.parent_id,
+            c.content,
+            c.created_at,
+            u.nickname
+        FROM comments c
+        LEFT JOIN users u ON c.user_id = u.id
+        WHERE c.board_id = :board_id
+        AND c.hidden_yn = 'N'
+        AND c.deleted_at IS NULL
+        ORDER BY 
+            COALESCE(c.parent_id, c.id) ASC,
+            CASE WHEN c.parent_id IS NULL THEN 0 ELSE 1 END ASC,
+            c.id ASC
+    ";
+
+    $stmt = $pdo->prepare($comment_sql);
+    $stmt->execute([':board_id' => $id]);
+    $comments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
 } catch (PDOException $e) {
     die("게시글 조회 오류: " . $e->getMessage());
 }
@@ -59,6 +84,121 @@ include '../includes/header.php';
 .board-content { min-height: 300px; font-size: 16px; font-weight: 300; line-height: 1.8; color: #333; margin-bottom: 40px; }
 .attached-image { max-width: 100%; height: auto; margin-bottom: 20px; border-radius: 4px; border: 1px solid #eee; }
 .btn-group-custom { display: flex; gap: 10px; justify-content: center; border-top: 1px solid #eee; padding-top: 30px; }
+
+.post-content {
+    font-size: 16px;
+    font-weight: 300;
+    line-height: 1.9;
+    color: #333;
+    word-break: break-word;
+}
+
+.post-content p {
+    margin-bottom: 1rem;
+}
+
+.post-content img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 20px auto;
+}
+
+.post-content a {
+    color: #1a1a1a;
+    text-decoration: underline;
+}
+
+.post-content ul,
+.post-content ol {
+    padding-left: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+/* 댓글 css */
+.comment-section {
+    border-top: 1px solid #eee;
+    margin-top: 40px;
+    padding-top: 30px;
+}
+
+.comment-title {
+    font-family: 'Noto Serif KR', serif;
+    font-size: 20px;
+    font-weight: 500;
+    margin-bottom: 20px;
+}
+
+.comment-item {
+    border-bottom: 1px solid #f0f0f0;
+    padding: 16px 0;
+}
+
+.comment-item.reply {
+    margin-left: 42px;
+    padding-left: 16px;
+    border-left: 2px solid #eee;
+}
+
+.comment-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 13px;
+    color: #777;
+}
+
+.comment-content {
+    font-size: 15px;
+    font-weight: 300;
+    line-height: 1.7;
+    color: #333;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.comment-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.comment-action-btn {
+    border: none;
+    background: none;
+    color: #999;
+    font-size: 13px;
+    padding: 0;
+}
+
+.comment-action-btn:hover {
+    color: #1a1a1a;
+}
+
+.comment-delete-btn:hover {
+    color: #dc3545;
+}
+
+.comment-form textarea,
+.reply-form textarea {
+    min-height: 90px;
+    resize: vertical;
+    font-size: 14px;
+    line-height: 1.7;
+}
+
+.reply-form {
+    margin-top: 12px;
+    display: none;
+}
+
+.reply-label {
+    font-size: 13px;
+    color: #999;
+    margin-right: 6px;
+}
+
 </style>
 
 <div class="board-wrapper w-100">
@@ -87,8 +227,8 @@ include '../includes/header.php';
     <!-- 글 본문 -->
     <div class="board-content">
         <!-- 텍스트 출력 (nl2br로 엔터 키 줄바꿈 반영) -->
-        <div class="mb-5">
-            <?= nl2br(htmlspecialchars($post['content'])) ?>
+        <div class="mb-5 post-content">
+            <?= $post['content'] ?>
         </div>
 
         <!-- 첨부 이미지 출력 -->
@@ -101,6 +241,136 @@ include '../includes/header.php';
                 <?php endforeach; ?>
             </div>
         <?php endif; ?>
+    </div>
+
+    <!-- 댓글 영역 -->
+    <div class="comment-section">
+        <h3 class="comment-title">
+            댓글 <?= count($comments) ?>
+        </h3>
+
+        <!-- 댓글 목록 -->
+        <?php if (empty($comments)): ?>
+            <div class="text-muted small mb-4">
+                아직 등록된 댓글이 없습니다.
+            </div>
+        <?php else: ?>
+            <?php foreach ($comments as $comment): ?>
+                <?php
+                    $is_reply = !empty($comment['parent_id']);
+                    $is_my_comment = isset($_SESSION['user_id']) && (int)$_SESSION['user_id'] === (int)$comment['user_id'];
+                ?>
+
+                <div class="comment-item <?= $is_reply ? 'reply' : '' ?>">
+                    <div class="comment-meta">
+                        <div>
+                            <?php if ($is_reply): ?>
+                                <span class="reply-label">↳ 답글</span>
+                            <?php endif; ?>
+
+                            <?php if ($type === 'anonymity'): ?>
+                                익명
+                            <?php else: ?>
+                                <?= htmlspecialchars($comment['nickname'] ?? '알 수 없음') ?>
+                            <?php endif; ?>
+
+                            <span class="ms-2">
+                                <?= htmlspecialchars($comment['created_at']) ?>
+                            </span>
+                        </div>
+
+                        <div class="comment-actions">
+                            <!-- 일반 댓글에만 답글 버튼 표시 -->
+                            <?php if (isset($_SESSION['user_id']) && !$is_reply): ?>
+                                <button 
+                                    type="button" 
+                                    class="comment-action-btn"
+                                    onclick="toggleReplyForm(<?= $comment['id'] ?>)">
+                                    답글
+                                </button>
+                            <?php endif; ?>
+
+                            <!-- 본인 댓글만 삭제 가능 -->
+                            <?php if ($is_my_comment): ?>
+                                <form method="post" action="comment_delete.php" onsubmit="return confirm('댓글을 삭제하시겠습니까?');" style="display:inline;">
+                                    <input type="hidden" name="comment_id" value="<?= $comment['id'] ?>">
+                                    <input type="hidden" name="board_id" value="<?= $post['id'] ?>">
+                                    <input type="hidden" name="type" value="<?= htmlspecialchars($type) ?>">
+                                    <button type="submit" class="comment-action-btn comment-delete-btn">삭제</button>
+                                </form>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
+                    <div class="comment-content">
+                        <?= nl2br(htmlspecialchars($comment['content'])) ?>
+                    </div>
+
+                    <!-- 대댓글 작성 폼: 일반 댓글 아래에만 표시 -->
+                    <?php if (isset($_SESSION['user_id']) && !$is_reply): ?>
+                        <form 
+                            method="post" 
+                            action="comment_save.php" 
+                            class="reply-form"
+                            id="reply-form-<?= $comment['id'] ?>"
+                        >
+                            <input type="hidden" name="board_id" value="<?= $post['id'] ?>">
+                            <input type="hidden" name="type" value="<?= htmlspecialchars($type) ?>">
+                            <input type="hidden" name="parent_id" value="<?= $comment['id'] ?>">
+
+                            <textarea 
+                                name="content" 
+                                class="form-control mb-2" 
+                                rows="2"
+                                placeholder="답글을 입력하세요"
+                                maxlength="1000"
+                                required></textarea>
+
+                            <div class="text-end">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toggleReplyForm(<?= $comment['id'] ?>)">
+                                    취소
+                                </button>
+                                <button type="submit" class="btn btn-dark btn-sm">
+                                    답글 등록
+                                </button>
+                            </div>
+                        </form>
+                    <?php endif; ?>
+                </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
+
+
+        <!-- 일반 댓글 작성 폼 -->
+        <div class="comment-form mt-4">
+            <?php if (isset($_SESSION['user_id'])): ?>
+                <form method="post" action="comment_save.php">
+                    <input type="hidden" name="board_id" value="<?= $post['id'] ?>">
+                    <input type="hidden" name="type" value="<?= htmlspecialchars($type) ?>">
+                    <input type="hidden" name="parent_id" value="">
+
+                    <div class="mb-3">
+                        <textarea 
+                            name="content" 
+                            class="form-control" 
+                            placeholder="댓글을 입력하세요"
+                            maxlength="1000"
+                            required></textarea>
+                    </div>
+
+                    <div class="text-end">
+                        <button type="submit" class="btn btn-dark btn-sm px-4">
+                            댓글 등록
+                        </button>
+                    </div>
+                </form>
+            <?php else: ?>
+                <div class="alert alert-light border small mb-0">
+                    댓글 작성은 로그인 후 가능합니다.
+                    <a href="../login.php" class="text-dark fw-bold">로그인</a>
+                </div>
+            <?php endif; ?>
+        </div>
     </div>
 
     <!-- 하단 버튼 영역 -->
@@ -125,6 +395,15 @@ function deletePost(id, type) {
         location.href = 'delete.php?id=' + id + '&type=' + type;
     }
 }
+
+function toggleReplyForm(commentId) { //답글버튼 눌렀을 때
+    var form = document.getElementById('reply-form-' + commentId);
+
+    if (!form) {return;}
+    if (form.style.display === 'block') {form.style.display = 'none';} 
+        else {form.style.display = 'block';}
+}
+</script>
 </script>
 
 <?php include '../includes/footer.php'; ?>

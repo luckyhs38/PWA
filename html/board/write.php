@@ -14,13 +14,68 @@ if (!array_key_exists($type, $allowed_types)) {
 
 $board_name = $allowed_types[$type];
 
-// 2. POST 처리 (글 저장)
+// 2. 수정 모드 확인
+$edit_id = isset($_GET['id']) ? (int)$_GET['id'] : (int)($_POST['id'] ?? 0);
+$is_edit = $edit_id > 0;
+$edit_post = null;
+
 $errors = [];
 
+// 수정 모드라면 기존 글 조회
+if ($is_edit) {
+    try {
+        $sql = "
+            SELECT *
+            FROM boards
+            WHERE id = :id
+              AND board_type = :type
+              AND hidden_yn = 'N'
+        ";
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([
+            ':id' => $edit_id,
+            ':type' => $type
+        ]);
+
+        $edit_post = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$edit_post) {
+            echo "<script>alert('존재하지 않거나 삭제된 게시글입니다.'); location.href='list.php?type={$type}';</script>";
+            exit;
+        }
+
+        // 본인 글인지 확인
+        if ((int)$edit_post['user_id'] !== (int)$_SESSION['user_id']) {
+            echo "<script>alert('수정 권한이 없습니다.'); history.back();</script>";
+            exit;
+        }
+
+    } catch (PDOException $e) {
+        die("게시글 조회 오류: " . $e->getMessage());
+    }
+}
+
+
+// 3. POST 처리
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $title   = trim($_POST['title'] ?? '');
-    $content = trim($_POST['content'] ?? '');
+    $title     = trim($_POST['title'] ?? '');
+    $content   = trim($_POST['content'] ?? '');
     $post_type = $_POST['type'] ?? $type;
+
+    // ==============================
+    // Summernote HTML 최소 보안 처리
+    // ==============================
+
+    // script 태그 제거
+    $content = preg_replace('/<script\b[^>]*>(.*?)<\/script>/is', '', $content);
+
+    // onclick, onerror 같은 이벤트 속성 제거
+    $content = preg_replace('/\son\w+="[^"]*"/i', '', $content);
+    $content = preg_replace("/\son\w+='[^']*'/i", '', $content);
+
+    // javascript: 링크 제거
+    $content = preg_replace('/javascript:/i', '', $content);
 
     // 유효성 검사
     if ($title === '') {
@@ -29,7 +84,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = '제목은 100자 이내로 입력해주세요.';
     }
 
-    if ($content === '') {
+    // Summernote 빈 내용 체크
+    $plain_content = trim(str_replace('&nbsp;', '', strip_tags($content)));
+
+    if ($plain_content === '') {
         $errors[] = '내용을 입력해주세요.';
     }
 
@@ -37,38 +95,107 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = '잘못된 게시판 타입입니다.';
     }
 
-    // 에러 없으면 DB 저장
-    // ※ 이미지는 Summernote가 업로드 시점에 image_upload.php로 먼저 저장하고
-    //   content HTML 안에 <img src="..."> 로 포함되어 함께 저장됨
     if (empty($errors)) {
         try {
             $pdo->beginTransaction();
 
-            // 게시글 저장
-            $sql = "INSERT INTO boards (user_id, board_type, title, content, hidden_yn, created_at)
-                    VALUES (:user_id, :board_type, :title, :content, 'N', NOW())";
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute([
-                ':user_id'    => $_SESSION['user_id'],
-                ':board_type' => $post_type,
-                ':title'      => $title,
-                ':content'    => $content,
-            ]);
-            $board_id = $pdo->lastInsertId();
+            if ($is_edit) {
+                // ==============================
+                // 수정 모드: UPDATE
+                // ==============================
+                $sql = "
+                    UPDATE boards
+                    SET title = :title,
+                        content = :content,
+                        board_type = :board_type,
+                        updated_at = NOW()
+                    WHERE id = :id
+                      AND user_id = :user_id
+                      AND hidden_yn = 'N'
+                ";
+
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([
+                    ':title'      => $title,
+                    ':content'    => $content,
+                    ':board_type' => $post_type,
+                    ':id'         => $edit_id,
+                    ':user_id'    => $_SESSION['user_id']
+                ]);
+
+                $board_id = $edit_id;
+                $message = '게시글이 수정되었습니다.';
+
+            } else {
+                // ==============================
+                // 등록 모드: INSERT
+                // ==============================
+
+                // writer_id 컬럼을 추가했으므로 같이 저장
+                $writer_id = $_SESSION['user_login_id'] ?? '';
+
+                if ($writer_id === '') {
+                    $writer_id = (string)$_SESSION['user_id'];
+                }
+
+                $sql = "
+                    INSERT INTO boards (
+                        user_id,
+                        writer_id,
+                        board_type,
+                        title,
+                        content,
+                        hidden_yn,
+                        created_at
+                    ) VALUES (
+                        :user_id,
+                        :writer_id,
+                        :board_type,
+                        :title,
+                        :content,
+                        'N',
+                        NOW()
+                    )
+                ";
+
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([
+                    ':user_id'    => $_SESSION['user_id'],
+                    ':writer_id'  => $writer_id,
+                    ':board_type' => $post_type,
+                    ':title'      => $title,
+                    ':content'    => $content
+                ]);
+
+                $board_id = $pdo->lastInsertId();
+                $message = '게시글이 등록되었습니다.';
+            }
 
             $pdo->commit();
 
-            echo "<script>alert('게시글이 등록되었습니다.'); location.href='view.php?id={$board_id}&type={$post_type}';</script>";
+            echo "<script>alert('{$message}'); location.href='view.php?id={$board_id}&type={$post_type}';</script>";
             exit;
 
         } catch (PDOException $e) {
             $pdo->rollBack();
+
+            // 개발 중에는 실제 오류 확인용으로 잠깐 사용 가능
+            // $errors[] = 'DB 오류: ' . $e->getMessage();
+
             $errors[] = '저장 중 오류가 발생했습니다. 다시 시도해주세요.';
         }
     }
 }
 
 include '../includes/header.php';
+/* 수정화면에서 기존 내용 넣기 */
+    $form_title = $_POST['title'] ?? ($edit_post['title'] ?? '');
+    $form_content = $_POST['content'] ?? ($edit_post['content'] ?? '');
+    $form_action = 'write.php?type=' . urlencode($type);
+
+    if ($is_edit) {
+        $form_action .= '&id=' . $edit_id;
+    }
 // ※ header.php 안에 아래 CDN이 포함되어 있어야 합니다:
 // Bootstrap CSS/JS, jQuery (필수!)
 // <link href="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-bs4.min.css" rel="stylesheet">
@@ -165,7 +292,7 @@ textarea.form-control {
 </style>
 
 <div class="write-wrapper w-100">
-    <h2 class="write-title">글쓰기</h2>
+    <h2 class="write-title"><?= $is_edit ? '글수정' : '글쓰기' ?></h2>
 
     <!-- 에러 메시지 -->
     <?php if (!empty($errors)): ?>
@@ -176,8 +303,12 @@ textarea.form-control {
         </div>
     <?php endif; ?>
 
-    <form method="POST" action="write.php?type=<?= htmlspecialchars($type) ?>" enctype="multipart/form-data">
+    <form method="POST" action="<?= htmlspecialchars($form_action) ?>" enctype="multipart/form-data">
         <input type="hidden" name="type" value="<?= htmlspecialchars($type) ?>">
+
+        <?php if ($is_edit): ?>
+            <input type="hidden" name="id" value="<?= $edit_id ?>">
+        <?php endif; ?>
 
         <!-- 제목 -->
         <div class="mb-4">
@@ -189,24 +320,24 @@ textarea.form-control {
                 name="title" 
                 placeholder="제목을 입력하세요"
                 maxlength="100"
-                value="<?= htmlspecialchars($_POST['title'] ?? '') ?>"
+                value="<?= htmlspecialchars($form_title) ?>"
                 oninput="updateCharCount(this, 'title-count', 100)"
             >
             <div class="char-count">
-                <span id="title-count"><?= mb_strlen($_POST['title'] ?? '') ?></span> / 100
+                <span id="title-count"><?= mb_strlen($form_title) ?></span> / 100
             </div>
         </div>
 
         <!-- 내용 (Summernote) -->
         <div class="mb-5">
             <label class="form-label" for="content">내용</label>
-            <textarea id="content" name="content"><?= $_POST['content'] ?? '' ?></textarea>
+            <textarea id="content" name="content"><?= htmlspecialchars($form_content, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></textarea>
         </div>
 
         <!-- 버튼 -->
         <div class="d-flex gap-2 justify-content-center border-top pt-4">
             <button type="button" class="btn-cancel" onclick="history.back()">취소</button>
-            <button type="submit" class="btn-submit">등록</button>
+            <button type="submit" class="btn-submit"><?= $is_edit ? '수정' : '등록' ?></button>
         </div>
     </form>
 </div>
@@ -240,7 +371,7 @@ $('#content').summernote({
                 formData.append('image', file);
 
                 $.ajax({
-                    url: '../board/image_upload.php',
+                    url: 'image_upload.php',
                     type: 'POST',
                     data: formData,
                     processData: false,
