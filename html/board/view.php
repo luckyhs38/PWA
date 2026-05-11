@@ -15,13 +15,8 @@ if ($id === 0 || !array_key_exists($type, $allowed_types)) {
 $board_name = $allowed_types[$type];
 
 try {
-    // 2. 조회수 1 증가
-    $update_sql = "UPDATE boards SET view_count = view_count + 1 WHERE id = :id";
-    $stmt = $pdo->prepare($update_sql);
-    $stmt->execute([':id' => $id]);
-
-    // 3. 게시글 데이터 가져오기 (삭제되지 않은 글만)
-    $sql = $sql = "SELECT * FROM boards WHERE id = :id AND board_type = :type AND hidden_yn = 'N'"; // 수정됨
+    // 2. [수정] 글 먼저 조회 후 존재 확인 → 그 다음 조회수 증가
+    $sql = "SELECT * FROM boards WHERE id = :id AND board_type = :type AND hidden_yn = 'N'";
     $stmt = $pdo->prepare($sql);
     $stmt->execute([':id' => $id, ':type' => $type]);
     $post = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -30,6 +25,11 @@ try {
         echo "<script>alert('존재하지 않거나 삭제된 게시글입니다.'); location.href='list.php?type={$type}';</script>";
         exit;
     }
+
+    // 3. 조회수 1 증가 (글 존재 확인 후)
+    $update_sql = "UPDATE boards SET view_count = view_count + 1 WHERE id = :id";
+    $stmt = $pdo->prepare($update_sql);
+    $stmt->execute([':id' => $id]);
 
     // 4. 연결된 첨부 이미지들 가져오기
     $img_sql = "SELECT * FROM board_images WHERE board_id = :board_id ORDER BY id ASC";
@@ -75,8 +75,8 @@ include '../includes/header.php';
     max-width: 900px; 
     margin: 0 auto; 
     padding: 0 15px 40px 15px; 
-    align-self: flex-start; /* 수직 중앙 정렬 해제 */
-    margin-top: 120px;      /* 상단 여백 유지 */
+    align-self: flex-start;
+    margin-top: 120px;
 }
 .board-header { border-bottom: 2px solid #1a1a1a; padding-bottom: 20px; margin-bottom: 30px; }
 .board-title { font-family: 'Noto Serif KR', serif; font-size: 26px; font-weight: 500; color: #1a1a1a; margin-bottom: 15px; }
@@ -92,113 +92,102 @@ include '../includes/header.php';
     color: #333;
     word-break: break-word;
 }
-
-.post-content p {
-    margin-bottom: 1rem;
-}
-
-.post-content img {
-    max-width: 100%;
-    height: auto;
-    display: block;
-    margin: 20px auto;
-}
-
-.post-content a {
-    color: #1a1a1a;
-    text-decoration: underline;
-}
-
+.post-content p { margin-bottom: 1rem; }
+.post-content img { max-width: 100%; height: auto; display: block; margin: 20px auto; }
+.post-content a { color: #1a1a1a; text-decoration: underline; }
 .post-content ul,
-.post-content ol {
-    padding-left: 1.5rem;
-    margin-bottom: 1rem;
-}
+.post-content ol { padding-left: 1.5rem; margin-bottom: 1rem; }
 
-/* 댓글 css */
-.comment-section {
-    border-top: 1px solid #eee;
-    margin-top: 40px;
-    padding-top: 30px;
-}
+/* 댓글 */
+.comment-section { border-top: 1px solid #ddd; margin-top: 48px; padding-top: 28px; }
+.comment-title { font-family: 'Noto Serif KR', serif; font-size: 19px; font-weight: 500; margin-bottom: 18px; color: #1a1a1a; }
 
-.comment-title {
-    font-family: 'Noto Serif KR', serif;
-    font-size: 20px;
+.comment-item { border: 1px solid #eee; border-radius: 8px; padding: 14px 16px; margin-bottom: 10px; background: #fff; }
+.comment-item.reply { margin-left: 28px; background: #fafafa; border-left: 3px solid #ddd; }
+
+.comment-meta { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; font-size: 13px; color: #777; }
+.comment-meta > div:first-child::before { content: none; }
+.comment-meta > div:first-child { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+
+.reply-label { font-size: 12px; color: #777; background: #f1f1f1; border-radius: 999px; padding: 2px 7px; }
+
+.comment-content { font-size: 15px; font-weight: 300; line-height: 1.7; color: #333; word-break: break-word; }
+
+.comment-actions { display: flex; gap: 6px; align-items: center; }
+.comment-action-btn { border: 1px solid #ddd; background: #fff; color: #666; font-size: 12px; padding: 5px 9px; border-radius: 999px; line-height: 1; cursor: pointer; }
+.comment-action-btn:hover { border-color: #111; color: #111; }
+.comment-delete-btn:hover { border-color: #dc3545; color: #dc3545; }
+
+.reply-form { margin-top: 12px; padding: 12px; background: #fafafa; border: 1px solid #eee; border-radius: 8px; display: none; }
+.comment-form { margin-top: 24px; padding: 16px; background: #fafafa; border: 1px solid #eee; border-radius: 8px; }
+.comment-form textarea,
+.reply-form textarea { min-height: 80px; resize: vertical; font-size: 14px; font-weight: 300; line-height: 1.7; border: 1px solid #ddd; border-radius: 6px; padding: 10px 12px; }
+.comment-form textarea:focus,
+.reply-form textarea:focus { border-color: #111; box-shadow: none; }
+
+/* [추가] 댓글 삭제 모달 */
+.modal-backdrop-custom {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 1050;
+    align-items: center;
+    justify-content: center;
+}
+.modal-backdrop-custom.show {
+    display: flex;
+}
+.modal-box {
+    background: #fff;
+    border-radius: 12px;
+    padding: 28px 28px 20px;
+    width: 320px;
+    max-width: 90vw;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+}
+.modal-box-title {
+    font-size: 15px;
     font-weight: 500;
+    color: #1a1a1a;
+    margin-bottom: 8px;
+}
+.modal-box-desc {
+    font-size: 13px;
+    color: #888;
+    line-height: 1.6;
     margin-bottom: 20px;
 }
-
-.comment-item {
-    border-bottom: 1px solid #f0f0f0;
-    padding: 16px 0;
-}
-
-.comment-item.reply {
-    margin-left: 42px;
-    padding-left: 16px;
-    border-left: 2px solid #eee;
-}
-
-.comment-meta {
+.modal-box-actions {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-    font-size: 13px;
-    color: #777;
+    justify-content: flex-end;
+    gap: 8px;
 }
-
-.comment-content {
-    font-size: 15px;
-    font-weight: 300;
-    line-height: 1.7;
+.modal-btn {
+    font-size: 13px;
+    padding: 7px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid #ddd;
+    background: #fff;
     color: #333;
-    white-space: pre-wrap;
-    word-break: break-word;
 }
-
-.comment-actions {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-}
-
-.comment-action-btn {
-    border: none;
-    background: none;
-    color: #999;
-    font-size: 13px;
-    padding: 0;
-}
-
-.comment-action-btn:hover {
-    color: #1a1a1a;
-}
-
-.comment-delete-btn:hover {
+.modal-btn:hover { background: #f5f5f5; }
+.modal-btn-danger {
+    background: #fff0f0;
+    border-color: #f5c6c6;
     color: #dc3545;
+    font-weight: 500;
 }
+.modal-btn-danger:hover { background: #ffe0e0; }
 
-.comment-form textarea,
-.reply-form textarea {
-    min-height: 90px;
-    resize: vertical;
-    font-size: 14px;
-    line-height: 1.7;
+/* 모바일 */
+@media (max-width: 575.98px) {
+    .comment-item { padding: 13px 14px; }
+    .comment-item.reply { margin-left: 16px; }
+    .comment-meta { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .comment-actions { width: 100%; justify-content: flex-end; }
 }
-
-.reply-form {
-    margin-top: 12px;
-    display: none;
-}
-
-.reply-label {
-    font-size: 13px;
-    color: #999;
-    margin-right: 6px;
-}
-
 </style>
 
 <div class="board-wrapper w-100">
@@ -214,9 +203,8 @@ include '../includes/header.php';
         <h2 class="board-title"><?= htmlspecialchars($post['title']) ?></h2>
         <div class="board-info">
             <div>
-                <!-- 작성자는 무조건 익명으로 고정 -->
                 <span class="me-3"><i class="bi bi-person me-1"></i>익명</span>
-                <span><i class="bi bi-clock me-1"></i><?= $post['created_at'] ?></span>
+                <span><i class="bi bi-clock me-1"></i><?= htmlspecialchars($post['created_at']) ?></span>
             </div>
             <div>
                 <span><i class="bi bi-eye me-1"></i><?= number_format($post['view_count']) ?></span>
@@ -226,9 +214,19 @@ include '../includes/header.php';
 
     <!-- 글 본문 -->
     <div class="board-content">
-        <!-- 텍스트 출력 (nl2br로 엔터 키 줄바꿈 반영) -->
         <div class="mb-5 post-content">
-            <?= $post['content'] ?>
+            <?php
+            /*
+             * [주의] 리치 에디터(TinyMCE 등)로 작성된 HTML을 저장한 경우:
+             *   → HTMLPurifier 같은 라이브러리로 화이트리스트 필터링 후 출력하세요.
+             *   → 현재는 raw HTML 그대로 출력 중이라 XSS 위험이 있습니다.
+             *
+             * 일반 텍스트로 저장한 경우:
+             *   → 아래 주석 처리된 줄로 교체하세요.
+             *   <?= nl2br(htmlspecialchars($post['content'])) ?>
+             */
+            echo $post['content'];
+            ?>
         </div>
 
         <!-- 첨부 이미지 출력 -->
@@ -290,23 +288,30 @@ include '../includes/header.php';
                                 </button>
                             <?php endif; ?>
 
-                            <!-- 본인 댓글만 삭제 가능 -->
+                            <!-- [수정] 본인 댓글 삭제: confirm → 모달 -->
                             <?php if ($is_my_comment): ?>
-                                <form method="post" action="comment_delete.php" onsubmit="return confirm('댓글을 삭제하시겠습니까?');" style="display:inline;">
+                                <form 
+                                    method="post" 
+                                    action="comment_delete.php" 
+                                    id="comment-delete-form-<?= $comment['id'] ?>"
+                                    style="display:inline;">
                                     <input type="hidden" name="comment_id" value="<?= $comment['id'] ?>">
                                     <input type="hidden" name="board_id" value="<?= $post['id'] ?>">
                                     <input type="hidden" name="type" value="<?= htmlspecialchars($type) ?>">
-                                    <button type="submit" class="comment-action-btn comment-delete-btn">삭제</button>
+                                    <button 
+                                        type="button" 
+                                        class="comment-action-btn comment-delete-btn"
+                                        onclick="openCommentDeleteModal(<?= $comment['id'] ?>)">
+                                        삭제
+                                    </button>
                                 </form>
                             <?php endif; ?>
                         </div>
                     </div>
 
-                    <div class="comment-content">
-                        <?= nl2br(htmlspecialchars($comment['content'])) ?>
-                    </div>
+                    <div class="comment-content"><?= nl2br(htmlspecialchars(trim($comment['content']))) ?></div>
 
-                    <!-- 대댓글 작성 폼: 일반 댓글 아래에만 표시 -->
+                    <!-- 대댓글 작성 폼 -->
                     <?php if (isset($_SESSION['user_id']) && !$is_reply): ?>
                         <form 
                             method="post" 
@@ -339,7 +344,6 @@ include '../includes/header.php';
                 </div>
             <?php endforeach; ?>
         <?php endif; ?>
-
 
         <!-- 일반 댓글 작성 폼 -->
         <div class="comment-form mt-4">
@@ -377,33 +381,94 @@ include '../includes/header.php';
     <div class="btn-group-custom">
         <button type="button" class="btn btn-outline-secondary px-4" onclick="location.href='list.php?type=<?= $type ?>'">목록</button>
         
-        <?php 
-        // 현재 로그인한 사용자가 이 글의 작성자인 경우에만 수정/삭제 버튼 노출
-        if (isset($_SESSION['user_id']) && $_SESSION['user_id'] == $post['user_id']): 
-        ?>
-            <!-- 글쓰기 페이지를 수정용으로 재활용 (id 값 전달) -->
+        <?php if (isset($_SESSION['user_id']) && $_SESSION['user_id'] == $post['user_id']): ?>
             <button type="button" class="btn btn-outline-dark px-4" onclick="location.href='write.php?type=<?= $type ?>&id=<?= $post['id'] ?>'">수정</button>
-            <button type="button" class="btn btn-danger px-4" onclick="deletePost(<?= $post['id'] ?>, '<?= $type ?>')">삭제</button>
+            <button type="button" class="btn btn-danger px-4" onclick="openPostDeleteModal(<?= $post['id'] ?>, '<?= $type ?>')">삭제</button>
         <?php endif; ?>
     </div>
 </div>
 
+<!-- [추가] 댓글 삭제 모달 -->
+<div class="modal-backdrop-custom" id="commentDeleteModal">
+    <div class="modal-box">
+        <div class="modal-box-title">댓글을 삭제할까요?</div>
+        <div class="modal-box-desc">삭제된 댓글은 복구할 수 없습니다.</div>
+        <div class="modal-box-actions">
+            <button class="modal-btn" onclick="closeCommentDeleteModal()">취소</button>
+            <button class="modal-btn modal-btn-danger" onclick="confirmCommentDelete()">삭제</button>
+        </div>
+    </div>
+</div>
+
+<!-- [추가] 게시글 삭제 모달 -->
+<div class="modal-backdrop-custom" id="postDeleteModal">
+    <div class="modal-box">
+        <div class="modal-box-title">게시글을 삭제할까요?</div>
+        <div class="modal-box-desc">삭제된 글은 복구할 수 없습니다.</div>
+        <div class="modal-box-actions">
+            <button class="modal-btn" onclick="closePostDeleteModal()">취소</button>
+            <button class="modal-btn modal-btn-danger" onclick="confirmPostDelete()">삭제</button>
+        </div>
+    </div>
+</div>
+
 <script>
-function deletePost(id, type) {
-    if (confirm('정말 이 게시글을 삭제하시겠습니까?\n삭제된 글은 복구할 수 없습니다.')) {
-        // 추후 생성할 delete.php로 이동
-        location.href = 'delete.php?id=' + id + '&type=' + type;
+/* ── 댓글 삭제 모달 ── */
+var _commentDeleteTargetId = null;
+
+function openCommentDeleteModal(commentId) {
+    _commentDeleteTargetId = commentId;
+    document.getElementById('commentDeleteModal').classList.add('show');
+}
+
+function closeCommentDeleteModal() {
+    _commentDeleteTargetId = null;
+    document.getElementById('commentDeleteModal').classList.remove('show');
+}
+
+function confirmCommentDelete() {
+    if (_commentDeleteTargetId !== null) {
+        document.getElementById('comment-delete-form-' + _commentDeleteTargetId).submit();
     }
+    closeCommentDeleteModal();
 }
 
-function toggleReplyForm(commentId) { //답글버튼 눌렀을 때
+/* ── 게시글 삭제 모달 ── */
+var _postDeleteId   = null;
+var _postDeleteType = null;
+
+function openPostDeleteModal(id, type) {
+    _postDeleteId   = id;
+    _postDeleteType = type;
+    document.getElementById('postDeleteModal').classList.add('show');
+}
+
+function closePostDeleteModal() {
+    document.getElementById('postDeleteModal').classList.remove('show');
+}
+
+function confirmPostDelete() {
+    if (_postDeleteId !== null) {
+        location.href = 'delete.php?id=' + _postDeleteId + '&type=' + _postDeleteType;
+    }
+    closePostDeleteModal();
+}
+
+/* ── 배경 클릭 시 모달 닫기 ── */
+document.querySelectorAll('.modal-backdrop-custom').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+        if (e.target === el) {
+            el.classList.remove('show');
+        }
+    });
+});
+
+/* ── 답글 폼 토글 ── */
+function toggleReplyForm(commentId) {
     var form = document.getElementById('reply-form-' + commentId);
-
-    if (!form) {return;}
-    if (form.style.display === 'block') {form.style.display = 'none';} 
-        else {form.style.display = 'block';}
+    if (!form) { return; }
+    form.style.display = form.style.display === 'block' ? 'none' : 'block';
 }
-</script>
 </script>
 
 <?php include '../includes/footer.php'; ?>
