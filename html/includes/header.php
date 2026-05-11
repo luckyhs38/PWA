@@ -410,7 +410,7 @@ $is_logged_in = isset($_SESSION['user_id']);
 
         <li class="nav-item">
           <a class="nav-link <?= $current === 'archive.php' ? 'active' : '' ?>"
-             href="/archive.php">사랑 아카이브</a>
+             href="/board/archive.php">사랑 아카이브</a>
         </li>
 
         <li class="nav-item">
