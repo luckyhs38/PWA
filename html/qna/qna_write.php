@@ -1,10 +1,13 @@
 <?php
-// /qna_write.php
+// /qna/qna_write.php
+require_once '../includes/auth_check.php';
+require_login(); // 로그인 필수
+
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-require_once './includes/db.php';
+require_once '../includes/db.php';
 
 if (!isset($_SESSION['user_id'])) {
     echo "<script>alert('로그인 후 이용 가능합니다.'); location.href='login.php';</script>";
@@ -71,12 +74,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-include './includes/header.php';
+include '../includes/header.php';
 ?>
 
 <style>
 .qna-write-wrap {
-    max-width: 860px;
+    width: 100%;
+    max-width: 1100px;
     margin: 110px auto 80px;
     padding: 0 24px;
 }
@@ -254,4 +258,4 @@ include './includes/header.php';
     </form>
 </div>
 
-<?php include './includes/footer.php'; ?>
+<?php include '../includes/footer.php'; ?>

@@ -161,6 +161,7 @@ include '../includes/header.php';
 <style>
 /* ── 공통 ── */
 .arc-wrap {
+    width: 100%;
     max-width: 1100px;
     margin: 110px auto 80px;
     padding: 0 24px;

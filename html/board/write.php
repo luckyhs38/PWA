@@ -14,6 +14,17 @@ if (!array_key_exists($type, $allowed_types)) {
 
 $board_name = $allowed_types[$type];
 
+// 1-2. 게시판별 권한 체크
+if ($type === 'anonymity') { require_login();} // 익명글 게시판
+if ($type === 'writing' && !is_writer()) {// 작가만의 방
+    $title = '작가만의 방';
+    $message = '작가 회원만 작성할 수 있는 게시판입니다.';
+    $link = '/writer_apply.php';
+    $link_text = '작가 신청하기';
+    include '../includes/permission_denied.php';
+    exit;
+}
+
 // 2. 수정 모드 확인
 $edit_id = isset($_GET['id']) ? (int)$_GET['id'] : (int)($_POST['id'] ?? 0);
 $is_edit = $edit_id > 0;
@@ -205,11 +216,10 @@ include '../includes/header.php';
 
 <style>
 .write-wrapper {
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 0 15px 60px 15px;
-    align-self: flex-start;
-    margin-top: 120px;
+    width: 100%;
+    max-width: 1100px;
+    margin: 110px auto 80px;
+    padding: 0 24px;
 }
 .write-title {
     font-family: 'Noto Serif KR', serif;

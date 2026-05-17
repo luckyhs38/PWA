@@ -12,11 +12,140 @@ $login_name = $is_login ? ($_SESSION['user_name'] ?? '') : '';
 ?>
 
 
-<div class="container py-4 py-md-5">
+<style>
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+#calendar {
+    min-height: 650px;
+}
+/* ── 캘린더 공통 래퍼 ── */
+.cal-wrapper { 
+    width: 100%;
+    max-width: 1100px;
+    margin: 110px auto 80px;
+    padding: 0 24px;
+}
+.cal-title {
+    font-family: 'Noto Serif KR', serif;
+    font-size: 26px;
+    font-weight: 500;
+    color: #1a1a1a;
+    letter-spacing: -.4px;
+}
+.cal-sub {
+    font-size: 13px;
+    color: #aaa;
+    margin-top: 4px;
+}
+
+/* FullCalendar 링크 스타일 초기화 */
+#calendar a {
+    color: inherit;
+    text-decoration: none;
+}
+/* ── 툴바 ── */
+.fc .fc-toolbar-title {
+    font-size: 1.4rem;
+    font-weight: 600;
+}
+
+.fc .fc-button {
+    background-color: #212529;
+    border-color: #212529;
+}
+
+.fc .fc-button:hover,
+.fc .fc-button:focus {
+    background-color: #343a40;
+    border-color: #343a40;
+    box-shadow: none;
+}
+
+.fc .fc-button-primary:not(:disabled).fc-button-active {
+    background-color: #343a40;
+    border-color: #343a40;
+}
+
+.fc-event {
+    cursor: pointer;
+}
+
+.fc-daygrid-day:hover {
+    background-color: #f8f9fa;
+    cursor: pointer;
+}
+/* ── 모바일 ── */
+@media (max-width: 575.98px) {
+    /* 툴바 타이틀 */
+    .fc .fc-toolbar-title {
+        font-size: 1rem;
+    }
+
+    /* 툴바 버튼 */
+    .fc .fc-button {
+        font-size: 0.75rem;
+        padding: 4px 8px;
+    }
+
+    /* 날짜 숫자 */
+    .fc .fc-daygrid-day-number {
+        font-size: 0.75rem;
+        padding: 2px 4px;
+    }
+
+    /* 이벤트 텍스트 */
+    .fc-event-title,
+    .fc-event-time {
+        font-size: 0.7rem !important;
+    }
+
+    /* 요일 헤더 */
+    .fc .fc-col-header-cell-cushion {
+        font-size: 0.72rem;
+        padding: 4px 2px;
+    }
+
+    /* 캘린더 최소 높이 줄이기 */
+    #calendar {
+        min-height: 360px;
+    }
+
+    /* 카드 패딩 */
+    .card-body {
+        padding: 0.5rem !important;
+    }
+
+    /* 토스트 위치 */
+    #calToastWrap {
+        bottom: 16px !important;
+        right: 16px !important;
+        left: 16px !important;
+    }
+}
+
+/* ── 태블릿 ── */
+@media (min-width: 576px) and (max-width: 767.98px) {
+    .fc .fc-toolbar-title {
+        font-size: 1.1rem;
+    }
+
+    .fc .fc-button {
+        font-size: 0.8rem;
+        padding: 5px 10px;
+    }
+}
+
+</style>
+
+
+<div class="cal-wrapper">
     <div class="d-flex justify-content-between align-items-center mb-3 mb-md-4">
         <div>
-            <h3 class="mb-1 fs-5 fs-md-3">일정</h3>
-            <p class="text-muted mb-0 small d-none d-sm-block">등록된 전체 일정을 확인할 수 있습니다.</p>
+            <h3 class="cal-title">일정</h3>
+            <p class="cal-sub">등록된 전체 일정을 확인할 수 있습니다.</p>
         </div>
 
         <?php if ($is_login): ?>
@@ -439,115 +568,5 @@ document.addEventListener('DOMContentLoaded', function () {
     function pad(n) { return String(n).padStart(2, '0'); }
 });
 </script>
-
-
-<style>
-@keyframes fadeInUp {
-    from { opacity: 0; transform: translateY(10px); }
-    to   { opacity: 1; transform: translateY(0); }
-}
-
-#calendar {
-    min-height: 650px;
-}
-
-/* FullCalendar 링크 스타일 초기화 */
-#calendar a {
-    color: inherit;
-    text-decoration: none;
-}
-/* ── 툴바 ── */
-.fc .fc-toolbar-title {
-    font-size: 1.4rem;
-    font-weight: 600;
-}
-
-.fc .fc-button {
-    background-color: #212529;
-    border-color: #212529;
-}
-
-.fc .fc-button:hover,
-.fc .fc-button:focus {
-    background-color: #343a40;
-    border-color: #343a40;
-    box-shadow: none;
-}
-
-.fc .fc-button-primary:not(:disabled).fc-button-active {
-    background-color: #343a40;
-    border-color: #343a40;
-}
-
-.fc-event {
-    cursor: pointer;
-}
-
-.fc-daygrid-day:hover {
-    background-color: #f8f9fa;
-    cursor: pointer;
-}
-/* ── 모바일 ── */
-@media (max-width: 575.98px) {
-    /* 툴바 타이틀 */
-    .fc .fc-toolbar-title {
-        font-size: 1rem;
-    }
-
-    /* 툴바 버튼 */
-    .fc .fc-button {
-        font-size: 0.75rem;
-        padding: 4px 8px;
-    }
-
-    /* 날짜 숫자 */
-    .fc .fc-daygrid-day-number {
-        font-size: 0.75rem;
-        padding: 2px 4px;
-    }
-
-    /* 이벤트 텍스트 */
-    .fc-event-title,
-    .fc-event-time {
-        font-size: 0.7rem !important;
-    }
-
-    /* 요일 헤더 */
-    .fc .fc-col-header-cell-cushion {
-        font-size: 0.72rem;
-        padding: 4px 2px;
-    }
-
-    /* 캘린더 최소 높이 줄이기 */
-    #calendar {
-        min-height: 360px;
-    }
-
-    /* 카드 패딩 */
-    .card-body {
-        padding: 0.5rem !important;
-    }
-
-    /* 토스트 위치 */
-    #calToastWrap {
-        bottom: 16px !important;
-        right: 16px !important;
-        left: 16px !important;
-    }
-}
-
-/* ── 태블릿 ── */
-@media (min-width: 576px) and (max-width: 767.98px) {
-    .fc .fc-toolbar-title {
-        font-size: 1.1rem;
-    }
-
-    .fc .fc-button {
-        font-size: 0.8rem;
-        padding: 5px 10px;
-    }
-}
-
-</style>
 
 <?php include '../includes/footer.php'; ?>

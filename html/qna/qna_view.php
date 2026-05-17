@@ -1,10 +1,10 @@
 <?php
-// /qna_view.php
+// /qna/qna_view.php
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-require_once './includes/db.php';
+require_once '../includes/db.php';
 
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
@@ -14,7 +14,7 @@ if ($id <= 0) {
 }
 
 // 임시 관리자 기준: users.id = 1
-$is_admin = isset($_SESSION['user_id']) && (int)$_SESSION['user_id'] === 1;
+$is_admin = isset($_SESSION['user_id']) && (int)$_SESSION['user_id'] === 3;
 
 try {
     $sql = "
@@ -53,12 +53,13 @@ try {
     die("문의 조회 오류: " . $e->getMessage());
 }
 
-include './includes/header.php';
+include '../includes/header.php';
 ?>
 
 <style>
 .qna-view-wrap {
-    max-width: 860px;
+    width: 100%;
+    max-width: 1100px;
     margin: 110px auto 80px;
     padding: 0 24px;
 }
@@ -347,8 +348,17 @@ include './includes/header.php';
                     placeholder="답변 내용을 입력하세요"><?= htmlspecialchars($qna['answer_content'] ?? '') ?></textarea>
 
                 <div class="text-end">
+                    <?php if ($qna['status'] === 'answered'): ?>
+                        <button 
+                            type="button" 
+                            class="btn btn-outline-danger px-4 me-2"
+                            onclick="if(confirm('등록된 답변을 정말 삭제하시겠습니까?')) location.href='qna_answer_delete.php?id=<?= $qna['id'] ?>';">
+                            답변 삭제
+                        </button>
+                    <?php endif; ?>
+
                     <button type="submit" class="btn btn-dark px-4">
-                        답변 저장
+                        <?= $qna['status'] === 'answered' ? '답변 수정' : '답변 저장' ?>
                     </button>
                 </div>
             </form>
@@ -420,4 +430,4 @@ document.getElementById('qnaDeleteModal').addEventListener('click', function(e) 
 });
 </script>
 
-<?php include './includes/footer.php'; ?>
+<?php include '../includes/footer.php'; ?>

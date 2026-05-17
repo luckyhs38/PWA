@@ -1,10 +1,10 @@
 <?php
-// /qna_delete.php
+// /qna/qna_delete.php
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-require_once './includes/db.php';
+require_once '../includes/db.php';
 
 if (!isset($_SESSION['user_id'])) {
     echo "<script>alert('로그인 후 이용 가능합니다.'); location.href='login.php';</script>";

@@ -3,6 +3,8 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/auth_check.php';
+
 $current = basename($_SERVER['PHP_SELF']);
 $is_logged_in = isset($_SESSION['user_id']);
 ?>
@@ -49,6 +51,13 @@ $is_logged_in = isset($_SESSION['user_id']);
         padding: 0; /* 패딩 초기화 */
         display: flex;
         align-items: center;
+    }
+
+    .header-container {
+        width: 100%;
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 0 24px;
     }
 
     .navbar-logo {
@@ -337,7 +346,7 @@ $is_logged_in = isset($_SESSION['user_id']);
 
 <!-- 네비게이션바 -->
 <nav class="navbar navbar-expand-lg">
-  <div class="container">
+  <div class="container-fluid header-container">
 
     <!-- 로고 -->
     <!-- <a class="navbar-brand" href="/index.php">한글은 늘 도망가</a> -->
@@ -372,6 +381,7 @@ $is_logged_in = isset($_SESSION['user_id']);
         </li>
 
         <!-- 공개글 드롭다운 -->
+        <!-- 
         <li class="nav-item dropdown">
           <a class="nav-link dropdown-toggle <?= in_array($current, ['public.php','notice.php']) ? 'active' : '' ?>"
              href="#"
@@ -396,7 +406,7 @@ $is_logged_in = isset($_SESSION['user_id']);
                  target="_blank">└ 신춘문예</a>
             </li>
           </ul>
-        </li>
+        </li> -->
 
         <li class="nav-item">
           <a class="nav-link <?= strpos($_SERVER['REQUEST_URI'], 'type=anonymity') !== false ? 'active' : '' ?>"
@@ -415,7 +425,7 @@ $is_logged_in = isset($_SESSION['user_id']);
 
         <li class="nav-item">
           <a class="nav-link <?= $current === 'qna.php' ? 'active' : '' ?>"
-             href="/qna.php">문의</a>
+             href="/qna/qna.php">문의</a>
         </li>
 
         <!-- 로그인/회원가입 드롭다운 (사람 아이콘) -->
@@ -433,9 +443,15 @@ $is_logged_in = isset($_SESSION['user_id']);
             <i class="bi bi-person icon-menu"></i>
           </a>
           <ul class="dropdown-menu dropdown-menu-end">
-            <?php if ($is_logged_in): ?>
-<!-- 정보 수정 메뉴 추가 -->
-<li>
+<?php if ($is_logged_in): ?>
+              <?php if (is_admin()): ?>
+              <li>
+                <a class="dropdown-item" href="/admin/index.php">
+                  <i class="bi bi-speedometer2 me-2"></i>관리자 대시보드
+                </a>
+              </li>
+              <?php endif; ?>
+              <li>
                 <a class="dropdown-item" href="/mypage.php">
                   <i class="bi bi-person-gear me-2"></i>내 정보 수정
                 </a>
@@ -461,11 +477,11 @@ $is_logged_in = isset($_SESSION['user_id']);
         </li>
 
         <!-- 검색 아이콘 -->
-        <li class="nav-item ms-1">
+        <!-- <li class="nav-item ms-1">
           <a class="nav-link px-1" href="#">
             <i class="bi bi-search icon-menu"></i>
           </a>
-        </li>
+        </li> -->
 
       </ul>
     </div>
@@ -512,8 +528,8 @@ $is_logged_in = isset($_SESSION['user_id']);
       <a href="/cal/cal.php" onclick="closeMobileMenu()">일정</a>
     </li>
 
-    <!-- 공개글 아코디언 (기존 사이트 방식) -->
-    <li>
+    <!-- 공개글 -->
+    <!-- <li>
       <button class="m-accordion-btn" onclick="toggleAccordion(this)">
         공개글
         <span class="arrow"><i class="bi bi-chevron-down"></i></span>
@@ -533,7 +549,7 @@ $is_logged_in = isset($_SESSION['user_id']);
              onclick="closeMobileMenu()">└ 신춘문예</a>
         </li>
       </ul>
-    </li>
+    </li> -->
 
     <li>
       <a href="/board/list.php?type=anonymity" onclick="closeMobileMenu()">익명글</a>
@@ -548,7 +564,7 @@ $is_logged_in = isset($_SESSION['user_id']);
     </li>
 
     <li>
-      <a href="/qna.php" onclick="closeMobileMenu()">문의</a>
+      <a href="/qna/qna.php" onclick="closeMobileMenu()">문의</a>
     </li>
 
   </ul>
@@ -560,15 +576,21 @@ $is_logged_in = isset($_SESSION['user_id']);
         <?= htmlspecialchars($_SESSION['nickname']) ?>님
       </span>
       <span class="m-login-divider">|</span>
-        <!-- 정보 수정 메뉴 추가 -->
-        <a href="/mypage.php">
-                <i class="bi bi-person-gear"></i> 정보수정
-            </a>
-            <span class="m-login-divider">|</span>
-            
-            <a href="/logout.php">
-                <i class="bi bi-box-arrow-right"></i> 로그아웃
-            </a>
+          <?php if (is_admin()): ?>
+              <a href="/admin/index.php">
+                  <i class="bi bi-speedometer2"></i> 관리자
+              </a>
+              <span class="m-login-divider">|</span>
+          <?php endif; ?>
+
+              <a href="/mypage.php">
+                  <i class="bi bi-person-gear"></i> 마이페이지
+              </a>
+              <span class="m-login-divider">|</span>
+                  
+              <a href="/logout.php">
+                  <i class="bi bi-box-arrow-right"></i> 로그아웃
+              </a>
             <?php else: ?>
             <a href="/login.php">
                 <i class="bi bi-box-arrow-in-right"></i> 로그인

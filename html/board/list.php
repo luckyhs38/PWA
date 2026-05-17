@@ -1,6 +1,7 @@
 <?php
 // /board/list.php
 require_once '../includes/db.php';
+require_once '../includes/auth_check.php'; // 로그인 확인
 
 // 1. 게시판 타입 설정 및 검증
 $allowed_types = ['anonymity' => '익명글', 'writing' => '작가만의 방'];
@@ -71,135 +72,269 @@ include '../includes/header.php';
 ?>
 
 <style>
-.board-wrapper { max-width: 900px; 
-    margin: 0 auto; 
-    padding: 0 15px 40px 15px; 
-    align-self: flex-start; /* 수직 중앙 정렬 해제 */
-    margin-top: 120px; /* 상단 여백 (원하는 간격에 맞춰 px 조절 가능) */
+/* ── 공통 ── */
+.board-wrap {
+    width: 100%;
+    max-width: 1100px;
+    margin: 110px auto 80px;
+    padding: 0 24px;
 }
-.board-title { font-family: 'Noto Serif KR', serif; font-weight: 500; font-size: 28px; margin-bottom: 30px; }
-.table th { font-weight: 500; color: #555; background-color: #f8f9fa; border-bottom: 2px solid #ddd; }
-.table td { vertical-align: middle; font-weight: 300; font-size: 15px; }
-.table-hover tbody tr:hover { background-color: #fcfcfc; }
-.title-link { color: #1a1a1a; text-decoration: none; transition: color 0.2s; }
-.title-link:hover { color: #666; text-decoration: underline; }
-.pagination .page-link { color: #555; border: none; font-weight: 300; }
-.pagination .page-item.active .page-link { background-color: #333; color: #fff; border-radius: 4px; }
-.icon-image { color: #888; font-size: 13px; margin-left: 5px; }
+
+/* ── 상단 헤더 (archive.php 스타일) ── */
+.board-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    border-bottom: 2px solid #1a1a1a;
+    padding-bottom: 18px;
+    margin-bottom: 20px;
+}
+.board-title {
+    font-family: 'Noto Serif KR', serif;
+    font-size: 26px;
+    font-weight: 500;
+    color: #1a1a1a;
+    letter-spacing: -.4px;
+}
+.board-sub {
+    font-size: 13px;
+    color: #aaa;
+    margin-top: 4px;
+}
+.board-search-wrap { position: relative; }
+.board-search-wrap input {
+    border: 1px solid #ddd;
+    border-radius: 999px;
+    padding: 8px 36px 8px 16px;
+    font-size: 13px;
+    color: #1a1a1a;
+    background: #fff;
+    outline: none;
+    width: 220px;
+    font-family: sans-serif;
+    transition: border-color .15s;
+}
+.board-search-wrap input:focus { border-color: #1a1a1a; }
+.board-search-wrap .si {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 15px;
+    color: #ccc;
+}
+
+/* ── 게시판 테이블 ── */
+.board-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.board-table th {
+    font-size: 12px;
+    font-weight: 500;
+    color: #bbb;
+    padding: 14px 10px;
+    border-bottom: 1px solid #eee;
+    white-space: nowrap;
+    text-align: center;
+}
+.board-table td {
+    padding: 22px 10px;
+    border-bottom: 1px solid #f0f0f0;
+    vertical-align: middle;
+    font-size: 14px;
+    color: #555;
+    text-align: center;
+}
+.board-table tbody tr:hover { background: #fafafa; }
+
+/* 컬럼별 너비 및 정렬 */
+.td-num { width: 60px; color: #ccc !important; font-size: 12px !important; font-variant-numeric: tabular-nums; }
+.td-title { text-align: left !important; }
+.td-title a {
+    font-family: 'Noto Serif KR', serif;
+    font-size: 17px;
+    font-weight: 400;
+    color: #1a1a1a;
+    text-decoration: none;
+    transition: color .15s;
+}
+.td-title a:hover { color: #888; text-decoration: underline; }
+.td-author { width: 120px; font-size: 13px !important; }
+.td-date { width: 100px; color: #bbb !important; font-size: 13px !important; }
+.td-views { width: 80px; color: #bbb !important; font-size: 13px !important; }
+.icon-image { color: #bbb; font-size: 12px; margin-left: 6px; }
+
+/* ── 빈 상태 ── */
+.board-empty {
+    text-align: center;
+    padding: 80px 0;
+    color: #ccc;
+    font-family: sans-serif;
+    font-size: 14px;
+}
+.board-empty i { font-size: 34px; display: block; margin-bottom: 12px; color: #e0e0e0; }
+
+/* ── 하단 액션 ── */
+.board-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 24px;
+}
+.btn-write {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #1a1a1a;
+    color: #fff;
+    border: 1px solid #1a1a1a;
+    border-radius: 999px;
+    padding: 8px 24px;
+    font-size: 13px;
+    text-decoration: none;
+    transition: all .15s;
+}
+.btn-write:hover {
+    background: #333;
+    color: #fff;
+}
+
+/* ── 페이지네이션 ── */
+.pagination-wrap { 
+    display: flex; 
+    justify-content: center; 
+    gap: 4px; 
+    margin-top: 30px; 
+}
+.page-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: #888;
+    border-radius: 999px;
+    font-size: 13px;
+    text-decoration: none;
+    transition: all .15s;
+}
+.page-btn:hover { color: #1a1a1a; background: #f5f5f5; }
+.page-btn.active { background: #1a1a1a; color: #fff; }
+.page-btn.disabled { opacity: 0.3; pointer-events: none; }
+
+/* ── 모바일 반응형 ── */
+@media (max-width: 600px) {
+    .board-wrap { margin-top: 80px; padding: 0 15px; }
+    .board-top { flex-direction: column; align-items: flex-start; gap: 14px; }
+    .board-search-wrap, .board-search-wrap input { width: 100%; }
+    
+    /* 모바일에서는 불필요한 정보 숨김 */
+    .td-num, .td-author, .td-views, .th-num, .th-author, .th-views { display: none; }
+    .td-title { padding-left: 0; font-size: 15px; }
+    .td-date { text-align: right !important; padding-right: 0; }
+}
 </style>
 
-<div class="board-wrapper w-100">
-    <h2 class="board-title"><?= htmlspecialchars($board_name) ?></h2>
+<div class="board-wrap">
 
-    <!-- 게시글 목록 테이블 -->
-    <div class="table-responsive mb-4">
-        <table class="table table-hover text-center align-middle mb-0">
-            <colgroup>
-                <col style="width: 8%;">
-                <col style="width: 50%;">
-                <col style="width: 15%;">
-                <col style="width: 15%;">
-                <col style="width: 12%;">
-            </colgroup>
-            <thead>
-                <tr>
-                    <th>번호</th>
-                    <th>제목</th>
-                    <th>작성자</th>
-                    <th>등록일</th>
-                    <th>조회</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (empty($posts)): ?>
-                    <tr>
-                        <td colspan="5" class="py-5 text-muted">등록된 게시글이 없습니다.</td>
-                    </tr>
-                <?php else: ?>
-                    <?php foreach ($posts as $post): ?>
-                        <tr>
-                            <td class="text-muted small"><?= $post['id'] ?></td>
-                            <td class="text-start">
-                                <a href="view.php?id=<?= $post['id'] ?>&type=<?= $type ?>" class="title-link">
-                                    <?= htmlspecialchars($post['title']) ?>
-                                </a>
-                                <?php if ($post['has_image'] > 0): ?>
-                                    <i class="bi bi-image icon-image" title="사진 첨부됨"></i>
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <?php 
-                                // 익명 게시판 분기 처리 해제
-                                // if ($type === 'anonymity') {
-                                    echo "익명";
-                                // } else {
-                                //     echo htmlspecialchars($post['nickname']);
-                                // }
-                                ?>
-                            </td>
-                            <td class="text-muted small">
-                                <?php 
-                                // 오늘 쓴 글은 시간만, 예전 글은 날짜만 표시
-                                $created = strtotime($post['created_at']);
-                                echo (date('Y-m-d') === date('Y-m-d', $created)) ? date('H:i', $created) : date('Y.m.d', $created);
-                                ?>
-                            </td>
-                            <td class="text-muted small"><?= number_format($post['view_count']) ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-
-    <!-- 하단 버튼 및 검색 영역 -->
-    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
-        <!-- 글쓰기 버튼 -->
+    <div class="board-top">
         <div>
-            <a href="write.php?type=<?= $type ?>" class="btn btn-dark px-4 font-weight-light">글쓰기</a>
+            <div class="board-title"><?= htmlspecialchars($board_name) ?></div>
+            <div class="board-sub">원하는 이야기를 자유롭게 나누어 보세요</div>
         </div>
-
-        <!-- 검색 폼 -->
-        <form action="list.php" method="GET" class="d-flex" style="max-width: 300px;">
+        
+        <form action="list.php" method="GET" class="board-search-wrap">
             <input type="hidden" name="type" value="<?= htmlspecialchars($type) ?>">
-            <input type="text" name="search" class="form-control form-control-sm me-2" placeholder="제목/내용 검색" value="<?= htmlspecialchars($search) ?>">
-            <button type="submit" class="btn btn-outline-secondary btn-sm text-nowrap">검색</button>
+            <input 
+                type="text" 
+                name="search" 
+                value="<?= htmlspecialchars($search) ?>" 
+                placeholder="제목/내용 검색">
+            <i class="bi bi-search si"></i>
         </form>
     </div>
 
-    <!-- 페이징 처리 -->
+    <table class="board-table">
+        <thead>
+            <tr>
+                <th class="th-num">#</th>
+                <th>제목</th>
+                <th class="th-author">작성자</th>
+                <th>등록일</th>
+                <th class="th-views">조회</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php if (empty($posts)): ?>
+                <tr>
+                    <td colspan="5" style="border-bottom: none;">
+                        <div class="board-empty">
+                            <i class="bi bi-journal-x"></i>
+                            <?= $search !== '' ? '검색 결과가 없습니다.' : '등록된 게시글이 없습니다.' ?>
+                        </div>
+                    </td>
+                </tr>
+            <?php else: ?>
+                <?php foreach ($posts as $post): ?>
+                    <tr>
+                        <td class="td-num"><?= $post['id'] ?></td>
+                        <td class="td-title">
+                            <a href="view.php?id=<?= $post['id'] ?>&type=<?= $type ?>">
+                                <?= htmlspecialchars($post['title']) ?>
+                            </a>
+                            <?php if ($post['has_image'] > 0): ?>
+                                <i class="bi bi-image icon-image" title="사진 첨부됨"></i>
+                            <?php endif; ?>
+                        </td>
+                        <td class="td-author">
+                            <?php echo "익명"; // 또는 작성자 이름 ?>
+                        </td>
+                        <td class="td-date">
+                            <?php 
+                            $created = strtotime($post['created_at']);
+                            echo (date('Y-m-d') === date('Y-m-d', $created)) ? date('H:i', $created) : date('Y.m.d', $created);
+                            ?>
+                        </td>
+                        <td class="td-views"><?= number_format($post['view_count']) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </tbody>
+    </table>
+
+    <div class="board-actions">
+        <a href="write.php?type=<?= $type ?>" class="btn-write">
+            <i class="bi bi-pencil-fill"></i> 글쓰기
+        </a>
+    </div>
+
     <?php if ($total_pages > 1): ?>
-    <nav>
-        <ul class="pagination justify-content-center">
-            <!-- 이전 페이지 -->
-            <li class="page-item <?= ($page <= 1) ? 'disabled' : '' ?>">
-                <a class="page-link" href="?type=<?= $type ?>&page=<?= $page - 1 ?>&search=<?= urlencode($search) ?>">
-                    <i class="bi bi-chevron-left"></i>
-                </a>
-            </li>
-            
-            <!-- 페이지 번호 -->
-            <?php 
-            // 페이징 블록 (5페이지씩 표시)
-            $block_size = 5;
-            $start_page = floor(($page - 1) / $block_size) * $block_size + 1;
-            $end_page = min($total_pages, $start_page + $block_size - 1);
+    <div class="pagination-wrap">
+        <a class="page-btn <?= ($page <= 1) ? 'disabled' : '' ?>" 
+           href="?type=<?= $type ?>&page=<?= $page - 1 ?>&search=<?= urlencode($search) ?>">
+            <i class="bi bi-chevron-left"></i>
+        </a>
+        
+        <?php 
+        $block_size = 5;
+        $start_page = floor(($page - 1) / $block_size) * $block_size + 1;
+        $end_page = min($total_pages, $start_page + $block_size - 1);
 
-            for ($i = $start_page; $i <= $end_page; $i++): 
-            ?>
-                <li class="page-item <?= ($i === $page) ? 'active' : '' ?>">
-                    <a class="page-link" href="?type=<?= $type ?>&page=<?= $i ?>&search=<?= urlencode($search) ?>"><?= $i ?></a>
-                </li>
-            <?php endfor; ?>
+        for ($i = $start_page; $i <= $end_page; $i++): 
+        ?>
+            <a class="page-btn <?= ($i === $page) ? 'active' : '' ?>" 
+               href="?type=<?= $type ?>&page=<?= $i ?>&search=<?= urlencode($search) ?>">
+                <?= $i ?>
+            </a>
+        <?php endfor; ?>
 
-            <!-- 다음 페이지 -->
-            <li class="page-item <?= ($page >= $total_pages) ? 'disabled' : '' ?>">
-                <a class="page-link" href="?type=<?= $type ?>&page=<?= $page + 1 ?>&search=<?= urlencode($search) ?>">
-                    <i class="bi bi-chevron-right"></i>
-                </a>
-            </li>
-        </ul>
-    </nav>
+        <a class="page-btn <?= ($page >= $total_pages) ? 'disabled' : '' ?>" 
+           href="?type=<?= $type ?>&page=<?= $page + 1 ?>&search=<?= urlencode($search) ?>">
+            <i class="bi bi-chevron-right"></i>
+        </a>
+    </div>
     <?php endif; ?>
 
 </div>

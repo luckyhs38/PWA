@@ -1,6 +1,7 @@
 <?php
 // /board/view.php
 require_once '../includes/db.php';
+require_once '../includes/auth_check.php'; // 로그인 확인
 
 // 1. 파라미터 검증 (글 번호와 게시판 타입)
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
@@ -13,6 +14,18 @@ if ($id === 0 || !array_key_exists($type, $allowed_types)) {
 }
 
 $board_name = $allowed_types[$type];
+
+// 1-2. 게시판별 권한 체크
+require_login(); // 게시판 읽기는 회원만 가능
+if ($type === 'anonymity') { require_login(); } //익명게시판
+if ($type === 'writing' && !is_writer()) {// 작가만의 방
+    $title = '작가만의 방';
+    $message = '작가 회원만 읽을 수 있는 게시판입니다.';
+    $link = '/writer_apply.php';
+    $link_text = '작가 신청하기';
+    include '../includes/permission_denied.php';
+    exit;
+}
 
 try {
     // 2. [수정] 글 먼저 조회 후 존재 확인 → 그 다음 조회수 증가
@@ -72,11 +85,10 @@ include '../includes/header.php';
 
 <style>
 .board-wrapper { 
-    max-width: 900px; 
-    margin: 0 auto; 
-    padding: 0 15px 40px 15px; 
-    align-self: flex-start;
-    margin-top: 120px;
+    width: 100%;
+    max-width: 1100px;
+    margin: 110px auto 80px;
+    padding: 0 24px;
 }
 .board-header { border-bottom: 2px solid #1a1a1a; padding-bottom: 20px; margin-bottom: 30px; }
 .board-title { font-family: 'Noto Serif KR', serif; font-size: 26px; font-weight: 500; color: #1a1a1a; margin-bottom: 15px; }

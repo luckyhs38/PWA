@@ -1,10 +1,10 @@
 <?php
-// /qna.php
+// /qna/qna.php
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-require_once './includes/db.php';
+require_once '../includes/db.php';
 
 $page    = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
 $status  = $_GET['status'] ?? 'all';
@@ -131,11 +131,12 @@ function status_label($status) {
     return $status === 'answered' ? '답변완료' : '답변대기';
 }
 
-include './includes/header.php';
+include '../includes/header.php';
 ?>
 
 <style>
 .qna-wrap {
+    width: 100%;
     max-width: 1100px;
     margin: 110px auto 80px;
     padding: 0 24px;
@@ -696,4 +697,4 @@ include './includes/header.php';
     </div>
 </div>
 
-<?php include './includes/footer.php'; ?>
+<?php include '../includes/footer.php'; ?>

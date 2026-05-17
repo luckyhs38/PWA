@@ -7,8 +7,19 @@ $error = '';
 
 // 이미 로그인된 상태면 메인으로
 if (isset($_SESSION['user_id'])) {
-    header("Location: index.php");
-    exit;
+// 로그인 성공 후 이동할 주소
+  $redirect = !empty($_GET['redirect']) ? $_GET['redirect'] : 'index.php';
+
+  // 외부 URL 차단 (보안)
+  if (
+      str_starts_with($redirect, 'http://') ||
+      str_starts_with($redirect, 'https://')
+  ) {
+      $redirect = 'index.php';
+  }
+
+  header("Location: {$redirect}");
+  exit;
 }
 
 // POST 요청 (로그인 버튼 클릭)
@@ -37,12 +48,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // 세션 고정 공격 방어
             session_regenerate_id(true);
 
+
             // 세션에 로그인 정보 저장
             $_SESSION['user_id']       = $user['id'];
             $_SESSION['user_login_id'] = $user['user_id'];
             $_SESSION['nickname']      = $user['nickname'];
 
-            header("Location: index.php");
+
+            // 로그인 성공 후 이동 주소
+            $redirect = !empty($_GET['redirect']) ? $_GET['redirect'] : 'index.php';
+
+
+            // 외부 URL 차단
+            if (
+                str_starts_with($redirect, 'http://') ||
+                str_starts_with($redirect, 'https://')
+            ) {
+                $redirect = 'index.php';
+            }
+
+
+            header("Location: {$redirect}");
             exit;
 
         } else {
@@ -88,7 +114,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <?php endif; ?>
 
           <!-- 로그인 폼 -->
-          <form method="POST" action="login.php">
+          <form
+              method="POST"
+              action="login.php<?= !empty($_GET['redirect']) ? '?redirect=' . urlencode($_GET['redirect']) : '' ?>"
+              >
+
 
             <div class="mb-3">
               <label class="form-label">아이디</label>
