@@ -544,7 +544,7 @@ $is_logged_in = isset($_SESSION['user_id']);
     </li>
 
     <li>
-      <a href="/archive.php" onclick="closeMobileMenu()">사랑 아카이브</a>
+      <a href="/board/archive.php" onclick="closeMobileMenu()">사랑 아카이브</a>
     </li>
 
     <li>

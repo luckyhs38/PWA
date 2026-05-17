@@ -1,8 +1,11 @@
 <?php
 // /board/archive.php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 require_once '../includes/db.php';
 
-// 탭: all(전체 순위) | mine(내 서랍)
 $tab  = $_GET['tab']  ?? 'all';
 $sort = $_GET['sort'] ?? 'likes';
 $q    = trim($_GET['q'] ?? '');
@@ -13,7 +16,6 @@ $allowed_sorts = ['likes', 'highlights', 'recent'];
 if (!in_array($tab,  $allowed_tabs))  $tab  = 'all';
 if (!in_array($sort, $allowed_sorts)) $sort = 'likes';
 
-// 내 서랍은 로그인 필요
 if ($tab === 'mine' && !isset($_SESSION['user_id'])) {
     header('Location: ../login.php');
     exit;
@@ -22,8 +24,8 @@ if ($tab === 'mine' && !isset($_SESSION['user_id'])) {
 try {
     $params = [];
 
+    // ── 메인 문장 목록 ──────────────────────────────────────────
     if ($tab === 'mine') {
-        // 내 서랍: 내가 스크랩한 문장 (삭제 안 한 것만)
         $order = match($sort) {
             'highlights' => 'q.highlight_count DESC',
             'recent'     => 'qs.created_at DESC',
@@ -38,34 +40,37 @@ try {
                 q.highlight_count,
                 qs.memo,
                 qs.created_at AS scrapped_at,
-                b.title AS board_title,
-                q.board_id,
+                b.title       AS board_title,
+                b.id          AS board_id,
+                b.board_type,
                 CASE WHEN ql.id IS NOT NULL THEN 1 ELSE 0 END AS is_liked
             FROM quote_scraps qs
-            JOIN quotes q  ON qs.quote_id = q.id
-            JOIN boards b  ON q.board_id  = b.id
+            JOIN   quotes q ON qs.quote_id = q.id
+            JOIN   boards b ON q.board_id  = b.id
             LEFT JOIN quote_likes ql
                 ON ql.quote_id = q.id AND ql.user_id = :uid2
             WHERE qs.user_id    = :uid
               AND qs.deleted_at IS NULL
         ";
-
         if ($q !== '') {
             $sql .= " AND q.content LIKE :q";
             $params[':q'] = '%' . $q . '%';
         }
-
         $sql .= " ORDER BY {$order}";
         $params[':uid']  = $_SESSION['user_id'];
         $params[':uid2'] = $_SESSION['user_id'];
 
     } else {
-        // 전체 순위
         $order = match($sort) {
             'highlights' => 'q.highlight_count DESC',
             'recent'     => 'q.created_at DESC',
             default      => 'q.like_count DESC',
         };
+
+        $uid_cols = isset($_SESSION['user_id'])
+            ? ", CASE WHEN ql.id IS NOT NULL THEN 1 ELSE 0 END AS is_liked
+               , CASE WHEN qs.id IS NOT NULL THEN 1 ELSE 0 END AS is_scrapped"
+            : ", 0 AS is_liked, 0 AS is_scrapped";
 
         $sql = "
             SELECT
@@ -75,11 +80,9 @@ try {
                 q.highlight_count,
                 q.created_at,
                 b.title AS board_title,
-                q.board_id
-                " . (isset($_SESSION['user_id']) ? ",
-                CASE WHEN ql.id IS NOT NULL THEN 1 ELSE 0 END AS is_liked,
-                CASE WHEN qs.id IS NOT NULL THEN 1 ELSE 0 END AS is_scrapped
-                " : ", 0 AS is_liked, 0 AS is_scrapped") . "
+                b.id    AS board_id,
+                b.board_type
+                {$uid_cols}
             FROM quotes q
             JOIN boards b ON q.board_id = b.id
         ";
@@ -96,10 +99,12 @@ try {
         }
 
         if ($q !== '') {
-            $sql .= " WHERE q.content LIKE :q";
+            $sql .= " WHERE (q.like_count > 0 OR q.highlight_count > 0)
+                    AND q.content LIKE :q";
             $params[':q'] = '%' . $q . '%';
+        } else {
+            $sql .= " WHERE (q.like_count > 0 OR q.highlight_count > 0)";
         }
-
         $sql .= " ORDER BY {$order} LIMIT 100";
     }
 
@@ -107,51 +112,113 @@ try {
     $stmt->execute($params);
     $quotes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+    // ── 사이드바 통계 ────────────────────────────────────────────
+    $stats = $pdo->query("
+        SELECT
+            (SELECT COUNT(*) FROM quotes)                          AS total_quotes,
+            (SELECT COALESCE(SUM(like_count), 0) FROM quotes)     AS total_likes,
+            (SELECT COUNT(DISTINCT user_id) FROM quote_scraps
+             WHERE deleted_at IS NULL)                            AS total_users,
+            (SELECT COUNT(*) FROM quotes
+             WHERE DATE(created_at) = CURDATE())                  AS today_added
+    ")->fetch(PDO::FETCH_ASSOC);
+
+    // ── 이번 주 인기 TOP 5 ───────────────────────────────────────
+    $hot = $pdo->query("
+        SELECT q.id, q.content, q.like_count, b.title AS board_title
+        FROM quotes q
+        JOIN boards b ON q.board_id = b.id
+        WHERE q.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        ORDER BY q.like_count DESC
+        LIMIT 5
+    ")->fetchAll(PDO::FETCH_ASSOC);
+
+    // ── 많이 나온 글 TOP 8 ───────────────────────────────────────
+    $top_boards = $pdo->query("
+        SELECT b.id, b.title, b.board_type, COUNT(q.id) AS quote_cnt
+        FROM quotes q
+        JOIN boards b ON q.board_id = b.id
+        GROUP BY b.id
+        ORDER BY quote_cnt DESC
+        LIMIT 8
+    ")->fetchAll(PDO::FETCH_ASSOC);
+
 } catch (PDOException $e) {
     die("오류: " . $e->getMessage());
+}
+
+// 검색어 하이라이트 헬퍼
+function highlight(string $text, string $q): string {
+    $safe = htmlspecialchars($text);
+    if ($q === '') return $safe;
+    $pattern = '/' . preg_quote(htmlspecialchars($q), '/') . '/ui';
+    return preg_replace($pattern, '<mark>$0</mark>', $safe);
 }
 
 include '../includes/header.php';
 ?>
 
 <style>
-/* ── 레이아웃 ── */
+/* ── 공통 ── */
 .arc-wrap {
-    max-width: 860px;
-    margin: 0 auto;
-    padding: 0 20px 80px;
-    margin-top: 110px;
+    max-width: 1100px;
+    margin: 110px auto 80px;
+    padding: 0 24px;
 }
 
-/* ── 헤더 ── */
-.arc-head {
+/* ── 상단 헤더 ── */
+.arc-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
     border-bottom: 2px solid #1a1a1a;
     padding-bottom: 18px;
-    margin-bottom: 0;
 }
-.arc-head-title {
+.arc-title {
     font-family: 'Noto Serif KR', serif;
-    font-size: 24px;
+    font-size: 26px;
     font-weight: 500;
     color: #1a1a1a;
+    letter-spacing: -.4px;
 }
-.arc-head-sub {
+.arc-sub {
     font-size: 13px;
     color: #aaa;
     margin-top: 4px;
+}
+.arc-search-wrap { position: relative; }
+.arc-search-wrap input {
+    border: 1px solid #ddd;
+    border-radius: 999px;
+    padding: 8px 36px 8px 16px;
+    font-size: 13px;
+    color: #1a1a1a;
+    background: #fff;
+    outline: none;
+    width: 220px;
+    font-family: sans-serif;
+    transition: border-color .15s;
+}
+.arc-search-wrap input:focus { border-color: #1a1a1a; }
+.arc-search-wrap .si {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 15px;
+    color: #ccc;
 }
 
 /* ── 탭 ── */
 .arc-tabs {
     display: flex;
-    gap: 0;
     border-bottom: 1px solid #eee;
-    margin-bottom: 24px;
+    margin-bottom: 28px;
 }
 .arc-tab {
-    padding: 14px 20px;
+    padding: 14px 22px;
     font-size: 14px;
-    color: #aaa;
+    color: #bbb;
     cursor: pointer;
     border: none;
     background: none;
@@ -159,337 +226,213 @@ include '../includes/header.php';
     margin-bottom: -1px;
     font-family: 'Noto Serif KR', serif;
     transition: color .15s;
+    text-decoration: none;
+    display: inline-block;
 }
-.arc-tab.active {
-    color: #1a1a1a;
-    border-bottom-color: #1a1a1a;
-}
-.arc-tab:hover { color: #555; }
+.arc-tab.active { color: #1a1a1a; border-bottom-color: #1a1a1a; }
+.arc-tab:hover  { color: #555; }
 
-/* ── 툴바 ── */
-.arc-toolbar {
+/* ── 2컬럼 레이아웃 ── */
+.arc-layout {
+    display: grid;
+    grid-template-columns: 1fr 260px;
+    gap: 48px;
+    align-items: start;
+}
+
+/* ── 정렬 버튼 ── */
+.sort-row {
     display: flex;
-    gap: 10px;
     align-items: center;
-    margin-bottom: 28px;
-    flex-wrap: wrap;
-}
-.arc-search {
-    position: relative;
-    flex: 1;
-    min-width: 200px;
-}
-.arc-search input {
-    width: 100%;
-    border: 1px solid #ddd;
-    border-radius: 999px;
-    padding: 9px 38px 9px 16px;
-    font-size: 13px;
-    color: #1a1a1a;
-    background: #fff;
-    outline: none;
-    font-family: sans-serif;
-    transition: border-color .15s;
-}
-.arc-search input:focus { border-color: #1a1a1a; }
-.arc-search-icon {
-    position: absolute;
-    right: 13px;
-    top: 50%;
-    transform: translateY(-50%);
-    font-size: 15px;
-    color: #ccc;
-}
-.arc-sorts {
-    display: flex;
     gap: 6px;
+    margin-bottom: 20px;
+}
+.sort-label {
+    font-size: 12px;
+    color: #bbb;
+    font-family: sans-serif;
+    margin-right: 4px;
 }
 .sort-btn {
     border: 1px solid #ddd;
     background: #fff;
     border-radius: 999px;
-    padding: 8px 15px;
+    padding: 6px 14px;
     font-size: 12px;
-    color: #777;
+    color: #888;
     cursor: pointer;
+    font-family: sans-serif;
     text-decoration: none;
     transition: all .15s;
     white-space: nowrap;
 }
-.sort-btn:hover { border-color: #999; color: #333; }
+.sort-btn:hover  { border-color: #aaa; color: #333; }
 .sort-btn.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
 
-/* ── 문장 카드 ── */
-.quote-list { display: flex; flex-direction: column; }
+/* ── 문장 목록 ── */
+.q-list { display: flex; flex-direction: column; }
 
-.quote-item {
+.q-item {
     display: flex;
     gap: 20px;
     padding: 22px 0;
     border-bottom: 1px solid #f0f0f0;
     align-items: flex-start;
-    transition: background .15s;
 }
-.quote-item:last-child { border-bottom: none; }
+.q-item:last-child { border-bottom: none; }
 
-.quote-rank {
+.q-rank {
     font-size: 11px;
     font-weight: 500;
     color: #ccc;
     min-width: 22px;
     text-align: right;
-    padding-top: 4px;
+    padding-top: 5px;
+    flex-shrink: 0;
+    font-family: sans-serif;
     font-variant-numeric: tabular-nums;
 }
-.quote-rank.top3 { color: #1a1a1a; font-size: 13px; }
+.q-rank.top { color: #1a1a1a; font-size: 14px; }
 
-.quote-body { flex: 1; min-width: 0; }
+.q-body { flex: 1; min-width: 0; }
 
-.quote-text {
+.q-text {
     font-family: 'Noto Serif KR', serif;
     font-size: 17px;
     font-weight: 400;
     color: #1a1a1a;
-    line-height: 1.8;
+    line-height: 1.85;
     margin-bottom: 12px;
     word-break: keep-all;
 }
-.quote-text mark {
-    background: #f0ede8;
+.q-text mark {
+    background: #f5f3ef;
     color: #1a1a1a;
     border-radius: 2px;
     padding: 0 2px;
 }
 
-.quote-meta {
+.q-foot {
     display: flex;
     align-items: center;
     gap: 10px;
     flex-wrap: wrap;
 }
-.quote-source {
-    font-size: 12px;
-    color: #bbb;
-}
-.quote-source a {
-    color: #999;
-    text-decoration: none;
-}
-.quote-source a:hover { color: #1a1a1a; }
+.q-src { font-size: 12px; color: #bbb; font-family: sans-serif; }
+.q-src a { color: #bbb; text-decoration: none; }
+.q-src a:hover { color: #1a1a1a; }
 
-.quote-actions { display: flex; gap: 6px; align-items: center; }
-
-.action-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    border: 1px solid #e8e8e8;
-    background: #fff;
-    border-radius: 999px;
-    padding: 5px 12px;
-    font-size: 12px;
-    color: #999;
-    cursor: pointer;
-    transition: all .15s;
-    text-decoration: none;
-    font-family: sans-serif;
-}
-.action-btn i { font-size: 13px; }
-.action-btn:hover { border-color: #bbb; color: #555; }
-.action-btn.liked { border-color: #1a1a1a; color: #1a1a1a; }
-.action-btn.scrapped { border-color: #1a1a1a; color: #1a1a1a; }
-
-/* 내 서랍 메모 */
-.quote-memo {
+.q-memo {
     font-size: 12px;
     color: #aaa;
     margin-top: 8px;
     font-style: italic;
     line-height: 1.5;
 }
-.quote-memo::before { content: '" '; }
-.quote-memo::after  { content: ' "'; }
+.q-memo::before { content: '" '; }
+.q-memo::after  { content: ' "'; }
+
+.q-actions { display: flex; gap: 6px; margin-left: auto; }
+
+.act-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: 1px solid #eee;
+    background: #fff;
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-size: 12px;
+    color: #aaa;
+    cursor: pointer;
+    font-family: sans-serif;
+    transition: all .15s;
+    line-height: 1;
+}
+.act-btn i { font-size: 13px; }
+.act-btn:hover    { border-color: #bbb; color: #555; }
+.act-btn.liked    { border-color: #1a1a1a; color: #1a1a1a; }
+.act-btn.saved    { border-color: #1a1a1a; color: #1a1a1a; }
+.act-btn.del-btn:hover { border-color: #dc3545; color: #dc3545; }
+
+/* ── 사이드바 ── */
+.arc-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    position: sticky;
+    top: 100px;
+}
+.s-card {
+    background: #fafafa;
+    border: 1px solid #f0f0f0;
+    border-radius: 12px;
+    padding: 18px 20px;
+}
+.s-card-title {
+    font-size: 11px;
+    color: #bbb;
+    font-family: sans-serif;
+    letter-spacing: .4px;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+}
+
+.stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+.stat-cell {
+    background: #fff;
+    border: 1px solid #f0f0f0;
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+.stat-label { font-size: 11px; color: #bbb; font-family: sans-serif; margin-bottom: 4px; }
+.stat-val   { font-size: 20px; font-weight: 500; color: #1a1a1a; font-family: sans-serif; }
+
+.hot-list { display: flex; flex-direction: column; gap: 12px; }
+.hot-item { display: flex; gap: 10px; align-items: flex-start; }
+.hot-num {
+    font-size: 11px;
+    font-weight: 500;
+    color: #ccc;
+    min-width: 14px;
+    flex-shrink: 0;
+    padding-top: 3px;
+    font-family: sans-serif;
+}
+.hot-num.top { color: #1a1a1a; }
+.hot-text { font-family: 'Noto Serif KR', serif; font-size: 13px; color: #1a1a1a; line-height: 1.6; }
+.hot-cnt  { font-size: 11px; color: #bbb; margin-top: 2px; font-family: sans-serif; }
+
+.tag-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag-item {
+    border: 1px solid #eee;
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-size: 12px;
+    color: #888;
+    text-decoration: none;
+    font-family: sans-serif;
+    transition: all .15s;
+    white-space: nowrap;
+}
+.tag-item:hover { border-color: #aaa; color: #1a1a1a; }
 
 /* ── 빈 상태 ── */
 .arc-empty {
     text-align: center;
     padding: 60px 0;
     color: #ccc;
+    font-family: sans-serif;
+    font-size: 14px;
 }
-.arc-empty i { font-size: 36px; display: block; margin-bottom: 12px; }
-.arc-empty p { font-size: 14px; }
+.arc-empty i { font-size: 34px; display: block; margin-bottom: 12px; }
 
-/* ── 모바일 ── */
-@media (max-width: 575px) {
-    .arc-wrap { margin-top: 80px; padding: 0 15px 60px; }
-    .arc-head-title { font-size: 20px; }
-    .quote-text { font-size: 15px; }
-    .arc-tab { padding: 12px 14px; font-size: 13px; }
-    .arc-sorts { flex-wrap: wrap; }
-}
-</style>
-
-<div class="arc-wrap">
-
-    <!-- 헤더 -->
-    <div class="arc-head">
-        <div class="arc-head-title">문장 아카이브</div>
-        <div class="arc-head-sub">사람들이 밑줄 그은 문장들</div>
-    </div>
-
-    <!-- 탭 -->
-    <div class="arc-tabs">
-        <a href="archive.php?tab=all&sort=<?= htmlspecialchars($sort) ?><?= $q ? '&q='.urlencode($q) : '' ?>"
-           class="arc-tab <?= $tab === 'all' ? 'active' : '' ?>">
-            전체 순위
-        </a>
-        <?php if (isset($_SESSION['user_id'])): ?>
-        <a href="archive.php?tab=mine&sort=<?= htmlspecialchars($sort) ?><?= $q ? '&q='.urlencode($q) : '' ?>"
-           class="arc-tab <?= $tab === 'mine' ? 'active' : '' ?>">
-            내 서랍
-        </a>
-        <?php endif; ?>
-    </div>
-
-    <!-- 툴바 -->
-    <div class="arc-toolbar">
-        <form method="get" action="archive.php" class="arc-search">
-            <input type="hidden" name="tab"  value="<?= htmlspecialchars($tab) ?>">
-            <input type="hidden" name="sort" value="<?= htmlspecialchars($sort) ?>">
-            <input
-                type="text"
-                name="q"
-                value="<?= htmlspecialchars($q) ?>"
-                placeholder="문장 검색">
-            <i class="bi bi-search arc-search-icon"></i>
-        </form>
-
-        <div class="arc-sorts">
-            <?php
-            $sorts = ['likes' => '좋아요순', 'highlights' => '저장순', 'recent' => '최신순'];
-            foreach ($sorts as $key => $label):
-                $url = "archive.php?tab={$tab}&sort={$key}" . ($q ? '&q='.urlencode($q) : '');
-            ?>
-                <a href="<?= $url ?>" class="sort-btn <?= $sort === $key ? 'active' : '' ?>">
-                    <?= $label ?>
-                </a>
-            <?php endforeach; ?>
-        </div>
-    </div>
-
-    <!-- 문장 목록 -->
-    <div class="quote-list">
-        <?php if (empty($quotes)): ?>
-            <div class="arc-empty">
-                <i class="bi bi-journal-text"></i>
-                <p><?= $q ? '검색 결과가 없습니다.' : '아직 저장된 문장이 없습니다.' ?></p>
-            </div>
-
-        <?php else: ?>
-            <?php foreach ($quotes as $i => $quote): ?>
-                <?php $rank = $i + 1; ?>
-                <div class="quote-item">
-                    <!-- 순위 -->
-                    <div class="quote-rank <?= $rank <= 3 ? 'top3' : '' ?>">
-                        <?= $rank ?>
-                    </div>
-
-                    <div class="quote-body">
-                        <!-- 문장 본문 -->
-                        <div class="quote-text">
-                            <?php if ($q !== ''): ?>
-                                <?= str_replace(
-                                    htmlspecialchars($q),
-                                    '<mark>' . htmlspecialchars($q) . '</mark>',
-                                    htmlspecialchars($quote['content'])
-                                ) ?>
-                            <?php else: ?>
-                                <?= htmlspecialchars($quote['content']) ?>
-                            <?php endif; ?>
-                        </div>
-
-                        <!-- 개인 메모 (내 서랍) -->
-                        <?php if ($tab === 'mine' && !empty($quote['memo'])): ?>
-                            <div class="quote-memo"><?= htmlspecialchars($quote['memo']) ?></div>
-                        <?php endif; ?>
-
-                        <!-- 메타 -->
-                        <div class="quote-meta">
-                            <span class="quote-source">
-                                <a href="view.php?id=<?= $quote['board_id'] ?>&type=anonymity">
-                                    <?= htmlspecialchars($quote['board_title']) ?>
-                                </a>
-                            </span>
-
-                            <div class="quote-actions">
-                                <!-- 좋아요 버튼 -->
-                                <?php if (isset($_SESSION['user_id'])): ?>
-                                    <button
-                                        type="button"
-                                        class="action-btn <?= $quote['is_liked'] ? 'liked' : '' ?>"
-                                        data-quote-id="<?= $quote['id'] ?>"
-                                        onclick="toggleLike(this)">
-                                        <i class="bi <?= $quote['is_liked'] ? 'bi-heart-fill' : 'bi-heart' ?>"></i>
-                                        <span><?= number_format($quote['like_count']) ?></span>
-                                    </button>
-                                <?php else: ?>
-                                    <span class="action-btn">
-                                        <i class="bi bi-heart"></i>
-                                        <span><?= number_format($quote['like_count']) ?></span>
-                                    </span>
-                                <?php endif; ?>
-
-                                <!-- 저장 수 -->
-                                <span class="action-btn" style="cursor:default; pointer-events:none;">
-                                    <i class="bi bi-bookmark"></i>
-                                    <span><?= number_format($quote['highlight_count']) ?></span>
-                                </span>
-
-                                <!-- 내 서랍: 삭제 버튼 -->
-                                <?php if ($tab === 'mine'): ?>
-                                    <button
-                                        type="button"
-                                        class="action-btn"
-                                        onclick="openRemoveModal(<?= $quote['id'] ?>)"
-                                        style="color:#ccc;">
-                                        <i class="bi bi-x"></i> 삭제
-                                    </button>
-                                <?php endif; ?>
-
-                                <!-- 전체: 내 서랍 저장/취소 -->
-                                <?php if ($tab === 'all' && isset($_SESSION['user_id'])): ?>
-                                    <button
-                                        type="button"
-                                        class="action-btn <?= $quote['is_scrapped'] ? 'scrapped' : '' ?>"
-                                        data-quote-id="<?= $quote['id'] ?>"
-                                        onclick="toggleScrap(this)">
-                                        <i class="bi <?= $quote['is_scrapped'] ? 'bi-bookmark-fill' : 'bi-bookmark' ?>"></i>
-                                        <span><?= $quote['is_scrapped'] ? '저장됨' : '저장' ?></span>
-                                    </button>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            <?php endforeach; ?>
-        <?php endif; ?>
-    </div>
-</div>
-
-<!-- 내 서랍 삭제 모달 -->
-<div class="modal-backdrop-custom" id="removeModal">
-    <div class="modal-box">
-        <div class="modal-box-title">서랍에서 삭제할까요?</div>
-        <div class="modal-box-desc">내 서랍에서만 사라지며, 아카이브 순위에는 영향이 없습니다.</div>
-        <div class="modal-box-actions">
-            <button class="modal-btn" onclick="closeRemoveModal()">취소</button>
-            <button class="modal-btn modal-btn-danger" onclick="confirmRemove()">삭제</button>
-        </div>
-    </div>
-</div>
-
-<style>
-.modal-backdrop-custom {
+/* ── 모달 ── */
+.arc-modal-bg {
     display: none;
     position: fixed;
     inset: 0;
@@ -498,8 +441,8 @@ include '../includes/header.php';
     align-items: center;
     justify-content: center;
 }
-.modal-backdrop-custom.show { display: flex; }
-.modal-box {
+.arc-modal-bg.show { display: flex; }
+.arc-modal {
     background: #fff;
     border-radius: 12px;
     padding: 28px 28px 20px;
@@ -507,17 +450,260 @@ include '../includes/header.php';
     max-width: 90vw;
     box-shadow: 0 8px 30px rgba(0,0,0,0.1);
 }
-.modal-box-title { font-size: 15px; font-weight: 500; color: #1a1a1a; margin-bottom: 8px; }
-.modal-box-desc  { font-size: 13px; color: #999; line-height: 1.6; margin-bottom: 20px; }
-.modal-box-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.modal-btn {
-    font-size: 13px; padding: 7px 16px; border-radius: 6px;
-    cursor: pointer; border: 1px solid #ddd; background: #fff; color: #333;
+.arc-modal-title { font-size: 15px; font-weight: 500; color: #1a1a1a; margin-bottom: 8px; }
+.arc-modal-desc  { font-size: 13px; color: #999; line-height: 1.6; margin-bottom: 20px; }
+.arc-modal-btns  { display: flex; justify-content: flex-end; gap: 8px; }
+.arc-mbtn {
+    font-size: 13px;
+    padding: 7px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid #ddd;
+    background: #fff;
+    color: #333;
+    font-family: sans-serif;
 }
-.modal-btn:hover { background: #f5f5f5; }
-.modal-btn-danger { background: #fff0f0; border-color: #f5c6c6; color: #dc3545; font-weight: 500; }
-.modal-btn-danger:hover { background: #ffe0e0; }
+.arc-mbtn:hover { background: #f5f5f5; }
+.arc-mbtn.danger { background: #fff0f0; border-color: #f5c6c6; color: #dc3545; font-weight: 500; }
+.arc-mbtn.danger:hover { background: #ffe0e0; }
+
+/* ── 반응형 ── */
+@media (max-width: 860px) {
+    .arc-layout {
+        grid-template-columns: 1fr;
+        gap: 0;
+    }
+    .arc-sidebar {
+        position: static;
+        margin-top: 40px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+    }
+}
+@media (max-width: 600px) {
+    .arc-wrap   { margin-top: 80px; padding: 0 15px; }
+    .arc-top    { flex-direction: column; align-items: flex-start; gap: 14px; }
+    .arc-search-wrap input { width: 100%; }
+    .arc-title  { font-size: 22px; }
+    .q-text     { font-size: 15px; }
+    .arc-tab    { padding: 12px 14px; font-size: 13px; }
+    .arc-sidebar { grid-template-columns: 1fr; }
+    .q-actions  { margin-left: 0; margin-top: 6px; }
+    .q-foot     { flex-direction: column; align-items: flex-start; gap: 8px; }
+}
 </style>
+
+<div class="arc-wrap">
+
+    <!-- 상단 헤더 -->
+    <div class="arc-top">
+        <div>
+            <div class="arc-title">문장 아카이브</div>
+            <div class="arc-sub">사람들이 밑줄 그은 문장들</div>
+        </div>
+        <form method="get" action="archive.php" class="arc-search-wrap">
+            <input type="hidden" name="tab"  value="<?= htmlspecialchars($tab) ?>">
+            <input type="hidden" name="sort" value="<?= htmlspecialchars($sort) ?>">
+            <input
+                type="text"
+                name="q"
+                value="<?= htmlspecialchars($q) ?>"
+                placeholder="문장 검색">
+            <i class="bi bi-search si"></i>
+        </form>
+    </div>
+
+    <!-- 탭 -->
+    <div class="arc-tabs">
+        <?php $base = fn($t) => "archive.php?tab={$t}&sort=" . urlencode($sort) . ($q ? '&q='.urlencode($q) : ''); ?>
+        <a href="<?= $base('all') ?>"  class="arc-tab <?= $tab === 'all'  ? 'active' : '' ?>">전체 순위</a>
+        <?php if (isset($_SESSION['user_id'])): ?>
+        <a href="<?= $base('mine') ?>" class="arc-tab <?= $tab === 'mine' ? 'active' : '' ?>">내 서랍</a>
+        <?php endif; ?>
+    </div>
+
+    <div class="arc-layout">
+
+        <!-- 메인 문장 목록 -->
+        <div>
+            <!-- 정렬 -->
+            <div class="sort-row">
+                <span class="sort-label">정렬</span>
+                <?php
+                $sorts = ['likes' => '좋아요순', 'highlights' => '저장순', 'recent' => '최신순'];
+                foreach ($sorts as $key => $label):
+                    $url = "archive.php?tab={$tab}&sort={$key}" . ($q ? '&q='.urlencode($q) : '');
+                ?>
+                    <a href="<?= $url ?>" class="sort-btn <?= $sort === $key ? 'active' : '' ?>">
+                        <?= $label ?>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+
+            <!-- 문장 카드 -->
+            <div class="q-list">
+                <?php if (empty($quotes)): ?>
+                    <div class="arc-empty">
+                        <i class="bi bi-journal-text"></i>
+                        <?= $q ? '검색 결과가 없습니다.' : '아직 저장된 문장이 없습니다.' ?>
+                    </div>
+                <?php else: ?>
+                    <?php foreach ($quotes as $i => $quote): ?>
+                        <?php
+                            $rank        = $i + 1;
+                            $is_liked    = !empty($quote['is_liked']);
+                            $is_scrapped = !empty($quote['is_scrapped']);
+                            $view_url    = "view.php?id={$quote['board_id']}&type=" . urlencode($quote['board_type']);
+                        ?>
+                        <div class="q-item">
+                            <div class="q-rank <?= $rank <= 3 ? 'top' : '' ?>"><?= $rank ?></div>
+                            <div class="q-body">
+                                <div class="q-text">
+                                    <?= highlight($quote['content'], $q) ?>
+                                </div>
+
+                                <?php if ($tab === 'mine' && !empty($quote['memo'])): ?>
+                                    <div class="q-memo"><?= htmlspecialchars($quote['memo']) ?></div>
+                                <?php endif; ?>
+
+                                <div class="q-foot">
+                                    <span class="q-src">
+                                        <a href="<?= $view_url ?>">
+                                            <?= htmlspecialchars($quote['board_title']) ?>
+                                        </a>
+                                    </span>
+                                    <div class="q-actions">
+                                        <!-- 좋아요 -->
+                                        <?php if (isset($_SESSION['user_id'])): ?>
+                                            <button
+                                                type="button"
+                                                class="act-btn <?= $is_liked ? 'liked' : '' ?>"
+                                                data-quote-id="<?= $quote['id'] ?>"
+                                                onclick="toggleLike(this)">
+                                                <i class="bi <?= $is_liked ? 'bi-heart-fill' : 'bi-heart' ?>"></i>
+                                                <span><?= number_format($quote['like_count']) ?></span>
+                                            </button>
+                                        <?php else: ?>
+                                            <span class="act-btn" style="cursor:default;">
+                                                <i class="bi bi-heart"></i>
+                                                <?= number_format($quote['like_count']) ?>
+                                            </span>
+                                        <?php endif; ?>
+
+                                        <!-- 저장 수 (읽기 전용) -->
+                                        <span class="act-btn" style="cursor:default; pointer-events:none;">
+                                            <i class="bi bi-bookmark"></i>
+                                            <?= number_format($quote['highlight_count']) ?>
+                                        </span>
+
+                                        <!-- 전체탭: 내 서랍 저장/취소 -->
+                                        <?php if ($tab === 'all' && isset($_SESSION['user_id'])): ?>
+                                            <button
+                                                type="button"
+                                                class="act-btn <?= $is_scrapped ? 'saved' : '' ?>"
+                                                data-quote-id="<?= $quote['id'] ?>"
+                                                onclick="toggleScrap(this)">
+                                                <i class="bi <?= $is_scrapped ? 'bi-bookmark-fill' : 'bi-bookmark' ?>"></i>
+                                                <span><?= $is_scrapped ? '저장됨' : '저장' ?></span>
+                                            </button>
+                                        <?php endif; ?>
+
+                                        <!-- 내 서랍탭: 삭제 -->
+                                        <?php if ($tab === 'mine'): ?>
+                                            <button
+                                                type="button"
+                                                class="act-btn del-btn"
+                                                onclick="openRemoveModal(<?= $quote['id'] ?>)">
+                                                <i class="bi bi-x"></i> 삭제
+                                            </button>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- 사이드바 -->
+        <aside class="arc-sidebar">
+
+            <!-- 통계 -->
+            <div class="s-card">
+                <div class="s-card-title">전체 통계</div>
+                <div class="stat-grid">
+                    <div class="stat-cell">
+                        <div class="stat-label">저장된 문장</div>
+                        <div class="stat-val"><?= number_format($stats['total_quotes']) ?></div>
+                    </div>
+                    <div class="stat-cell">
+                        <div class="stat-label">총 좋아요</div>
+                        <div class="stat-val"><?= number_format($stats['total_likes']) ?></div>
+                    </div>
+                    <div class="stat-cell">
+                        <div class="stat-label">참여 작가</div>
+                        <div class="stat-val"><?= number_format($stats['total_users']) ?></div>
+                    </div>
+                    <div class="stat-cell">
+                        <div class="stat-label">오늘 추가</div>
+                        <div class="stat-val">+<?= number_format($stats['today_added']) ?></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 이번 주 인기 -->
+            <?php if (!empty($hot)): ?>
+            <div class="s-card">
+                <div class="s-card-title">이번 주 인기</div>
+                <div class="hot-list">
+                    <?php foreach ($hot as $hi => $h): ?>
+                        <div class="hot-item">
+                            <div class="hot-num <?= $hi < 3 ? 'top' : '' ?>"><?= $hi + 1 ?></div>
+                            <div>
+                                <div class="hot-text">
+                                    <?= htmlspecialchars(mb_strimwidth($h['content'], 0, 28, '…')) ?>
+                                </div>
+                                <div class="hot-cnt">♥ <?= number_format($h['like_count']) ?></div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- 많이 나온 글 -->
+            <?php if (!empty($top_boards)): ?>
+            <div class="s-card">
+                <div class="s-card-title">많이 나온 글</div>
+                <div class="tag-cloud">
+                    <?php foreach ($top_boards as $board): ?>
+                        <a
+                            href="view.php?id=<?= $board['id'] ?>&type=<?= urlencode($board['board_type']) ?>"
+                            class="tag-item">
+                            <?= htmlspecialchars($board['title']) ?>
+                        </a>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endif; ?>
+
+        </aside>
+    </div>
+</div>
+
+<!-- 내 서랍 삭제 모달 -->
+<div class="arc-modal-bg" id="removeModal">
+    <div class="arc-modal">
+        <div class="arc-modal-title">서랍에서 삭제할까요?</div>
+        <div class="arc-modal-desc">내 서랍에서만 사라지며, 아카이브 순위에는 영향이 없습니다.</div>
+        <div class="arc-modal-btns">
+            <button class="arc-mbtn" onclick="closeRemoveModal()">취소</button>
+            <button class="arc-mbtn danger" onclick="confirmRemove()">삭제</button>
+        </div>
+    </div>
+</div>
 
 <script>
 /* ── 좋아요 토글 ── */
@@ -558,11 +744,11 @@ function toggleScrap(btn) {
         var icon = btn.querySelector('i');
         var txt  = btn.querySelector('span');
         if (data.scrapped) {
-            btn.classList.add('scrapped');
+            btn.classList.add('saved');
             icon.className  = 'bi bi-bookmark-fill';
             txt.textContent = '저장됨';
         } else {
-            btn.classList.remove('scrapped');
+            btn.classList.remove('saved');
             icon.className  = 'bi bi-bookmark';
             txt.textContent = '저장';
         }

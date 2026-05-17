@@ -181,6 +181,57 @@ include '../includes/header.php';
 }
 .modal-btn-danger:hover { background: #ffe0e0; }
 
+/* 드래그 저장 팝업 */
+#quote-popup {
+    display: none;
+    position: absolute;
+    z-index: 999;
+    transform: translateX(-50%);
+    filter: drop-shadow(0 4px 12px rgba(0,0,0,0.15));
+}
+#quote-popup button {
+    background: #1a1a1a;
+    color: #fff;
+    border: none;
+    border-radius: 999px;
+    padding: 7px 16px;
+    font-size: 12px;
+    font-family: sans-serif;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+#quote-popup button:hover { background: #333; }
+#quote-popup::after {
+    content: '';
+    display: block;
+    width: 0; height: 0;
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+    border-top: 7px solid #1a1a1a;
+    margin: 0 auto;
+}
+
+/* 토스트 */
+#quote-toast {
+    display: none;
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1a1a1a;
+    color: #fff;
+    font-size: 13px;
+    font-family: sans-serif;
+    padding: 10px 20px;
+    border-radius: 999px;
+    z-index: 9999;
+    opacity: 0;
+    transition: opacity .2s;
+}
+#quote-toast.show { opacity: 1; }
+
 /* 모바일 */
 @media (max-width: 575.98px) {
     .comment-item { padding: 13px 14px; }
@@ -214,7 +265,7 @@ include '../includes/header.php';
 
     <!-- 글 본문 -->
     <div class="board-content">
-        <div class="mb-5 post-content">
+        <div class="mb-5 post-content" id="post-content">
             <?php
             /*
              * [주의] 리치 에디터(TinyMCE 등)로 작성된 HTML을 저장한 경우:
@@ -386,6 +437,16 @@ include '../includes/header.php';
             <button type="button" class="btn btn-danger px-4" onclick="openPostDeleteModal(<?= $post['id'] ?>, '<?= $type ?>')">삭제</button>
         <?php endif; ?>
     </div>
+    <!-- 드래그 팝업 -->
+    <div id="quote-popup">
+        <button type="button" onclick="saveQuote()">
+            <i class="bi bi-bookmark"></i> 문장 저장
+        </button>
+    </div>
+
+    <!-- 토스트 -->
+    <div id="quote-toast"></div>
+
 </div>
 
 <!-- [추가] 댓글 삭제 모달 -->
@@ -469,6 +530,112 @@ function toggleReplyForm(commentId) {
     if (!form) { return; }
     form.style.display = form.style.display === 'block' ? 'none' : 'block';
 }
+
+/* ── 드래그 문장 저장 ── */
+<?php if (isset($_SESSION['user_id'])): ?>
+
+var _quoteData = null;
+
+document.getElementById('post-content').addEventListener('mouseup', function() {
+    setTimeout(handleSelection, 10); // 선택 확정 후 실행
+});
+
+// 모바일 터치 지원
+document.getElementById('post-content').addEventListener('touchend', function() {
+    setTimeout(handleSelection, 100);
+});
+
+function handleSelection() {
+    var sel = window.getSelection();
+    var text = sel ? sel.toString().trim() : '';
+
+    if (!text || text.length < 5) {
+        hideQuotePopup();
+        return;
+    }
+    if (text.length > 300) {
+        showToast('300자 이내로 선택해주세요');
+        hideQuotePopup();
+        return;
+    }
+
+    // 선택 범위 위치 계산
+    var range    = sel.getRangeAt(0);
+    var rect     = range.getBoundingClientRect();
+    var content  = document.getElementById('post-content');
+    var contRect = content.getBoundingClientRect();
+
+    // offset 계산 (글 본문 텍스트 기준)
+    var preRange = document.createRange();
+    preRange.selectNodeContents(content);
+    preRange.setEnd(range.startContainer, range.startOffset);
+    var startOffset = preRange.toString().length;
+    var endOffset   = startOffset + text.length;
+
+    _quoteData = {
+        board_id:     <?= $post['id'] ?>,
+        content:      text,
+        start_offset: startOffset,
+        end_offset:   endOffset,
+    };
+
+    // 팝업 위치: 선택 영역 위쪽 중앙
+    var popup = document.getElementById('quote-popup');
+    popup.style.display = 'block';
+    popup.style.top  = (window.scrollY + rect.top - popup.offsetHeight - 10) + 'px';
+    popup.style.left = (window.scrollX + rect.left + rect.width / 2) + 'px';
+}
+
+function hideQuotePopup() {
+    document.getElementById('quote-popup').style.display = 'none';
+    _quoteData = null;
+}
+
+function saveQuote() {
+    if (!_quoteData) return;
+
+    fetch('quote_save.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(_quoteData)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        hideQuotePopup();
+        if (data.success) {
+            showToast(data.already ? '이미 저장한 문장이에요' : '내 서랍에 저장했어요 ✓');
+        } else {
+            showToast(data.msg || '저장에 실패했습니다');
+        }
+    })
+    .catch(function() {
+        showToast('오류가 발생했습니다');
+    });
+
+    window.getSelection().removeAllRanges();
+}
+
+// 본문 외 클릭 시 팝업 닫기
+document.addEventListener('mousedown', function(e) {
+    var popup = document.getElementById('quote-popup');
+    if (popup.style.display === 'block' && !popup.contains(e.target)) {
+        hideQuotePopup();
+    }
+});
+
+function showToast(msg) {
+    var toast = document.getElementById('quote-toast');
+    toast.textContent = msg;
+    toast.style.display = 'block';
+    setTimeout(function() { toast.classList.add('show'); }, 10);
+    setTimeout(function() {
+        toast.classList.remove('show');
+        setTimeout(function() { toast.style.display = 'none'; }, 200);
+    }, 2500);
+}
+
+<?php endif; ?>
+
 </script>
 
 <?php include '../includes/footer.php'; ?>
