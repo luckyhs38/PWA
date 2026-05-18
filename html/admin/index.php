@@ -1,266 +1,262 @@
 <?php
 // /admin/index.php
 if (session_status() === PHP_SESSION_NONE) session_start();
-
 require_once '../includes/db.php';
 require_once '../includes/auth_check.php';
-
-// 1. 관리자 권한 필수 체크 (아니면 튕겨냄)
 require_admin();
 
+$admin_menu = 'dashboard';
+
 try {
-    // 2. 전체 통계 데이터 조회
-    // 전체 가입자 수
-    $users_cnt = $pdo->query("SELECT COUNT(*) FROM users WHERE deleted_at IS NULL")->fetchColumn();
-    
-    // 전체 게시글 수 (익명글 + 작가글)
-    $boards_cnt = $pdo->query("SELECT COUNT(*) FROM boards WHERE hidden_yn = 'N'")->fetchColumn();
+    // 통계
+    $stats = $pdo->query("
+        SELECT
+            (SELECT COUNT(*) FROM users WHERE deleted_at IS NULL)                    AS total_users,
+            (SELECT COUNT(*) FROM users WHERE DATE(created_at) = CURDATE()
+             AND deleted_at IS NULL)                                                  AS today_users,
+            (SELECT COUNT(*) FROM boards WHERE hidden_yn = 'N')                      AS total_posts,
+            (SELECT COUNT(*) FROM boards WHERE hidden_yn = 'N'
+             AND DATE(created_at) = CURDATE())                                       AS today_posts,
+            (SELECT COUNT(*) FROM qna WHERE status = 'pending'
+             AND deleted_at IS NULL)                                                  AS pending_qna,
+            (SELECT COUNT(*) FROM writer_applications WHERE status = 'pending')      AS pending_writers
+    ")->fetch(PDO::FETCH_ASSOC);
 
-    // 3. 처리해야 할 '대기 중' 업무 카운트
-    // 대기 중인 작가 신청
-    $pending_writer_cnt = $pdo->query("SELECT COUNT(*) FROM writer_applications WHERE status = 'pending'")->fetchColumn();
-    
-    // 답변 대기 중인 QnA
-    $pending_qna_cnt = $pdo->query("SELECT COUNT(*) FROM qna WHERE status = 'pending' AND deleted_at IS NULL")->fetchColumn();
+    // 최근 문의 5건
+    $recent_qna = $pdo->query("
+        SELECT q.id, q.title, q.status, q.private_yn, q.created_at, u.nickname
+        FROM qna q JOIN users u ON q.user_id = u.id
+        WHERE q.deleted_at IS NULL
+        ORDER BY q.created_at DESC LIMIT 5
+    ")->fetchAll(PDO::FETCH_ASSOC);
 
-    // 4. 최근 들어온 작가 신청 (최대 5건)
-    $recent_writers = $pdo->query("
-        SELECT wa.id, u.nickname, wa.created_at 
-        FROM writer_applications wa
-        JOIN users u ON wa.user_id = u.id
+    // 작가 신청 대기
+    $pending_apply = $pdo->query("
+        SELECT wa.id, wa.created_at, u.nickname, u.user_id AS login_id
+        FROM writer_applications wa JOIN users u ON wa.user_id = u.id
         WHERE wa.status = 'pending'
         ORDER BY wa.created_at DESC LIMIT 5
     ")->fetchAll(PDO::FETCH_ASSOC);
 
-    // 5. 최근 들어온 미답변 QnA (최대 5건)
-    $recent_qnas = $pdo->query("
-        SELECT id, title, created_at 
-        FROM qna 
-        WHERE status = 'pending' AND deleted_at IS NULL
+    // 최근 가입 회원 5명
+    $recent_users = $pdo->query("
+        SELECT id, nickname, user_id, role, created_at
+        FROM users WHERE deleted_at IS NULL
         ORDER BY created_at DESC LIMIT 5
+    ")->fetchAll(PDO::FETCH_ASSOC);
+
+    // 최근 게시글 5건
+    $recent_posts = $pdo->query("
+        SELECT b.id, b.title, b.board_type, b.created_at, u.nickname
+        FROM boards b JOIN users u ON b.user_id = u.id
+        WHERE b.hidden_yn = 'N'
+        ORDER BY b.created_at DESC LIMIT 5
     ")->fetchAll(PDO::FETCH_ASSOC);
 
 } catch (PDOException $e) {
     die("오류: " . $e->getMessage());
 }
 
-include '../includes/header.php';
+include '_layout.php';
 ?>
 
-<style>
-/* ── 공통 래퍼 ── */
-.admin-wrap {
-    width: 100%;
-    max-width: 1100px;
-    margin: 110px auto 80px;
-    padding: 0 24px;
-    flex: 1; /* 푸터 밀어내기 */
-}
-
-/* ── 상단 헤더 ── */
-.admin-top {
-    border-bottom: 2px solid #1a1a1a;
-    padding-bottom: 18px;
-    margin-bottom: 30px;
-}
-.admin-title {
-    font-family: 'Noto Serif KR', serif;
-    font-size: 26px;
-    font-weight: 500;
-    color: #1a1a1a;
-    letter-spacing: -.4px;
-}
-.admin-sub { font-size: 13px; color: #aaa; margin-top: 4px; }
-
-/* ── 요약 카드 (상단) ── */
-.summary-card {
-    background: #fff;
-    border: 1px solid #eee;
-    border-radius: 12px;
-    padding: 24px;
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    transition: transform 0.2s, box-shadow 0.2s;
-    text-decoration: none;
-    color: inherit;
-}
-.summary-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.04);
-    color: inherit;
-}
-.summary-icon {
-    width: 54px; height: 54px;
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 24px;
-}
-.icon-users { background: #f0f7f0; color: #4caf50; }
-.icon-boards { background: #f8f9fa; color: #666; }
-.icon-alert { background: #fff5f5; color: #dc3545; }
-
-.summary-info h5 { font-size: 13px; color: #888; margin: 0 0 4px 0; font-family: sans-serif; }
-.summary-info .num { font-size: 24px; font-weight: 600; color: #1a1a1a; line-height: 1; }
-
-/* ── 메인 패널 (하단) ── */
-.admin-panel {
-    background: #fff;
-    border: 1px solid #eee;
-    border-radius: 12px;
-    padding: 24px;
-    height: 100%;
-}
-.panel-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    font-family: 'Noto Serif KR', serif;
-    font-size: 18px;
-    font-weight: 500;
-    color: #1a1a1a;
-}
-.panel-head a {
-    font-family: 'Noto Sans KR', sans-serif;
-    font-size: 12px;
-    color: #888;
-    text-decoration: none;
-}
-.panel-head a:hover { color: #1a1a1a; text-decoration: underline; }
-
-/* 리스트 */
-.admin-list { list-style: none; padding: 0; margin: 0; }
-.admin-list li {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 14px 0;
-    border-bottom: 1px solid #f5f5f5;
-}
-.admin-list li:last-child { border-bottom: none; padding-bottom: 0; }
-.admin-list a {
-    color: #333;
-    text-decoration: none;
-    font-size: 14px;
-    max-width: 250px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.admin-list a:hover { color: #000; text-decoration: underline; }
-.list-date { font-size: 12px; color: #bbb; }
-
-.badge-urgent {
-    display: inline-block;
-    background: #fff0f0;
-    color: #dc3545;
-    border: 1px solid #fcc;
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    margin-right: 6px;
-    vertical-align: middle;
-}
-
-.empty-msg { text-align: center; padding: 40px 0; color: #bbb; font-size: 13px; }
-</style>
-
-<div class="admin-wrap d-flex flex-column">
-    
-    <div class="admin-top">
-        <div class="admin-title">관리자 대시보드</div>
-        <div class="admin-sub">사이트 현황과 대기 중인 업무를 확인하세요.</div>
+<!-- 통계 카드 -->
+<div class="stat-grid-4">
+    <div class="stat-card">
+        <div class="stat-label">전체 회원</div>
+        <div class="stat-val"><?= number_format($stats['total_users']) ?></div>
+        <div class="stat-diff">▲ 오늘 +<?= $stats['today_users'] ?></div>
     </div>
-
-    <div class="row g-4 mb-4">
-        <div class="col-md-4">
-            <a href="/admin/writer_list.php" class="summary-card">
-                <div class="summary-icon icon-alert"><i class="bi bi-bell-fill"></i></div>
-                <div class="summary-info">
-                    <h5>처리 대기 업무</h5>
-                    <div class="num"><?= number_format($pending_writer_cnt + $pending_qna_cnt) ?> <span style="font-size:14px;font-weight:400;color:#888;">건</span></div>
-                </div>
-            </a>
-        </div>
-        <div class="col-md-4">
-            <div class="summary-card" style="cursor:default;">
-                <div class="summary-icon icon-users"><i class="bi bi-people-fill"></i></div>
-                <div class="summary-info">
-                    <h5>전체 가입자</h5>
-                    <div class="num"><?= number_format($users_cnt) ?> <span style="font-size:14px;font-weight:400;color:#888;">명</span></div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="summary-card" style="cursor:default;">
-                <div class="summary-icon icon-boards"><i class="bi bi-journal-text"></i></div>
-                <div class="summary-info">
-                    <h5>전체 게시글</h5>
-                    <div class="num"><?= number_format($boards_cnt) ?> <span style="font-size:14px;font-weight:400;color:#888;">개</span></div>
-                </div>
-            </div>
+    <div class="stat-card">
+        <div class="stat-label">전체 게시글</div>
+        <div class="stat-val"><?= number_format($stats['total_posts']) ?></div>
+        <div class="stat-diff">▲ 오늘 +<?= $stats['today_posts'] ?></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">답변 대기</div>
+        <div class="stat-val"><?= $stats['pending_qna'] ?></div>
+        <div class="stat-diff <?= $stats['pending_qna'] > 0 ? 'down' : '' ?>">
+            <?= $stats['pending_qna'] > 0 ? '미처리 ' . $stats['pending_qna'] . '건' : '모두 처리됨' ?>
         </div>
     </div>
-
-    <div class="row g-4 flex-grow-1">
-        
-        <div class="col-md-6 d-flex flex-column">
-            <div class="admin-panel flex-grow-1">
-                <div class="panel-head">
-                    대기 중인 작가 신청
-                    <a href="/admin/writer_list.php">전체보기 <i class="bi bi-chevron-right"></i></a>
-                </div>
-                
-                <?php if (empty($recent_writers)): ?>
-                    <div class="empty-msg">대기 중인 작가 신청이 없습니다.</div>
-                <?php else: ?>
-                    <ul class="admin-list">
-                        <?php foreach ($recent_writers as $w): ?>
-                            <li>
-                                <div>
-                                    <span class="badge-urgent">NEW</span>
-                                    <a href="/admin/writer_list.php">
-                                        <?= htmlspecialchars($w['nickname']) ?> 님의 작가 신청
-                                    </a>
-                                </div>
-                                <div class="list-date"><?= date('m.d H:i', strtotime($w['created_at'])) ?></div>
-                            </li>
-                        <?php endforeach; ?>
-                    </ul>
-                <?php endif; ?>
-            </div>
+    <div class="stat-card">
+        <div class="stat-label">작가 신청 대기</div>
+        <div class="stat-val"><?= $stats['pending_writers'] ?></div>
+        <div class="stat-diff <?= $stats['pending_writers'] > 0 ? 'down' : '' ?>">
+            <?= $stats['pending_writers'] > 0 ? '대기 중 ' . $stats['pending_writers'] . '건' : '모두 처리됨' ?>
         </div>
+    </div>
+</div>
 
-        <div class="col-md-6 d-flex flex-column">
-            <div class="admin-panel flex-grow-1">
-                <div class="panel-head">
-                    답변 대기 중인 문의
-                    <a href="/qna/qna.php">전체보기 <i class="bi bi-chevron-right"></i></a>
-                </div>
-                
-                <?php if (empty($recent_qnas)): ?>
-                    <div class="empty-msg">모든 문의에 답변을 완료했습니다! 🎉</div>
-                <?php else: ?>
-                    <ul class="admin-list">
-                        <?php foreach ($recent_qnas as $q): ?>
-                            <li>
-                                <div>
-                                    <span class="badge-urgent">답변대기</span>
-                                    <a href="/qna/qna_view.php?id=<?= $q['id'] ?>">
-                                        <?= htmlspecialchars($q['title']) ?>
-                                    </a>
-                                </div>
-                                <div class="list-date"><?= date('m.d H:i', strtotime($q['created_at'])) ?></div>
-                            </li>
-                        <?php endforeach; ?>
-                    </ul>
-                <?php endif; ?>
-            </div>
+<!-- 빠른 실행 -->
+<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:20px;">
+    <a href="/admin/writer_list.php" style="text-decoration:none;">
+        <div class="stat-card" style="text-align:center; cursor:pointer; padding:16px; transition:border-color .15s;">
+            <i class="bi bi-pencil-square" style="font-size:22px; color:#888; display:block; margin-bottom:6px;"></i>
+            <div style="font-size:12px; color:#888;">작가 신청 처리</div>
         </div>
+    </a>
+    <a href="/admin/qna_list.php" style="text-decoration:none;">
+        <div class="stat-card" style="text-align:center; cursor:pointer; padding:16px;">
+            <i class="bi bi-reply" style="font-size:22px; color:#888; display:block; margin-bottom:6px;"></i>
+            <div style="font-size:12px; color:#888;">문의 답변</div>
+        </div>
+    </a>
+    <a href="/admin/users.php" style="text-decoration:none;">
+        <div class="stat-card" style="text-align:center; cursor:pointer; padding:16px;">
+            <i class="bi bi-person-check" style="font-size:22px; color:#888; display:block; margin-bottom:6px;"></i>
+            <div style="font-size:12px; color:#888;">회원 권한 변경</div>
+        </div>
+    </a>
+    <a href="/admin/posts.php" style="text-decoration:none;">
+        <div class="stat-card" style="text-align:center; cursor:pointer; padding:16px;">
+            <i class="bi bi-file-text" style="font-size:22px; color:#888; display:block; margin-bottom:6px;"></i>
+            <div style="font-size:12px; color:#888;">게시글 관리</div>
+        </div>
+    </a>
+</div>
 
+<!-- 2컬럼 그리드 -->
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+
+    <!-- 최근 문의 -->
+    <div class="adm-card" style="margin-bottom:0;">
+        <div class="adm-card-hd">
+            <span class="adm-card-title">최근 문의</span>
+            <a href="/admin/qna_list.php" class="adm-btn">전체 보기</a>
+        </div>
+        <?php if (empty($recent_qna)): ?>
+            <div class="adm-empty" style="padding:30px 0;">
+                <i class="bi bi-inbox"></i> 문의가 없습니다.
+            </div>
+        <?php else: ?>
+            <table class="adm-table">
+                <tbody>
+                <?php foreach ($recent_qna as $q): ?>
+                    <tr>
+                        <td style="width:80px;">
+                            <span class="adm-badge <?= $q['status'] ?>">
+                                <?= $q['status'] === 'answered' ? '답변완료' : '대기' ?>
+                            </span>
+                        </td>
+                        <td>
+                            <a href="/admin/qna_list.php?id=<?= $q['id'] ?>"
+                               style="color:#1a1a1a; text-decoration:none; font-size:13px;
+                                      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+                                      display:block; max-width:200px;">
+                                <?= htmlspecialchars($q['title']) ?>
+                            </a>
+                        </td>
+                        <td style="color:#bbb; font-size:11px; white-space:nowrap;">
+                            <?= date('m.d', strtotime($q['created_at'])) ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+    </div>
+
+    <!-- 작가 신청 대기 -->
+    <div class="adm-card" style="margin-bottom:0;">
+        <div class="adm-card-hd">
+            <span class="adm-card-title">작가 신청 대기</span>
+            <a href="/admin/writer_list.php" class="adm-btn">전체 보기</a>
+        </div>
+        <?php if (empty($pending_apply)): ?>
+            <div class="adm-empty" style="padding:30px 0;">
+                <i class="bi bi-check-circle"></i> 대기 중인 신청이 없습니다.
+            </div>
+        <?php else: ?>
+            <table class="adm-table">
+                <tbody>
+                <?php foreach ($pending_apply as $a): ?>
+                    <tr>
+                        <td>
+                            <div style="font-size:13px; font-weight:500; color:#1a1a1a;">
+                                <?= htmlspecialchars($a['nickname']) ?>
+                            </div>
+                            <div style="font-size:11px; color:#bbb;">
+                                @<?= htmlspecialchars($a['login_id']) ?>
+                            </div>
+                        </td>
+                        <td style="color:#bbb; font-size:11px; white-space:nowrap;">
+                            <?= date('m.d', strtotime($a['created_at'])) ?>
+                        </td>
+                        <td style="text-align:right;">
+                            <a href="/admin/writer_list.php?id=<?= $a['id'] ?>"
+                               class="adm-btn warning" style="font-size:11px; padding:4px 10px;">
+                                검토
+                            </a>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+    </div>
+
+    <!-- 최근 가입 회원 -->
+    <div class="adm-card" style="margin-bottom:0;">
+        <div class="adm-card-hd">
+            <span class="adm-card-title">최근 가입 회원</span>
+            <a href="/admin/users.php" class="adm-btn">전체 보기</a>
+        </div>
+        <table class="adm-table">
+            <tbody>
+            <?php foreach ($recent_users as $u): ?>
+                <tr>
+                    <td>
+                        <span class="adm-badge <?= $u['role'] ?>">
+                            <?= ['admin'=>'관리자','writer'=>'작가','user'=>'일반'][$u['role']] ?? $u['role'] ?>
+                        </span>
+                    </td>
+                    <td>
+                        <div style="font-size:13px; color:#1a1a1a;"><?= htmlspecialchars($u['nickname']) ?></div>
+                        <div style="font-size:11px; color:#bbb;">@<?= htmlspecialchars($u['user_id']) ?></div>
+                    </td>
+                    <td style="color:#bbb; font-size:11px; white-space:nowrap;">
+                        <?= date('m.d', strtotime($u['created_at'])) ?>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 최근 게시글 -->
+    <div class="adm-card" style="margin-bottom:0;">
+        <div class="adm-card-hd">
+            <span class="adm-card-title">최근 게시글</span>
+            <a href="/admin/posts.php" class="adm-btn">전체 보기</a>
+        </div>
+        <table class="adm-table">
+            <tbody>
+            <?php foreach ($recent_posts as $p): ?>
+                <tr>
+                    <td style="width:60px;">
+                        <span class="adm-badge <?= $p['board_type'] === 'writing' ? 'writer' : 'user' ?>">
+                            <?= $p['board_type'] === 'writing' ? '작가방' : '익명' ?>
+                        </span>
+                    </td>
+                    <td>
+                        <a href="/board/view.php?id=<?= $p['id'] ?>&type=<?= urlencode($p['board_type']) ?>"
+                           target="_blank"
+                           style="color:#1a1a1a; text-decoration:none; font-size:13px;
+                                  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+                                  display:block; max-width:200px;">
+                            <?= htmlspecialchars($p['title']) ?>
+                        </a>
+                    </td>
+                    <td style="color:#bbb; font-size:11px; white-space:nowrap;">
+                        <?= date('m.d', strtotime($p['created_at'])) ?>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
     </div>
 
 </div>
 
-<?php include '../includes/footer.php'; ?>
+<?php include '_layout_end.php'; ?>
