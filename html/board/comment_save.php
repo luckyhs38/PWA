@@ -1,6 +1,7 @@
 <?php
 require_once '../includes/db.php';
 require_once '../includes/auth_check.php';
+require_once __DIR__ . '/../includes/notifications.php';
 
 $board_id = isset($_POST['board_id']) ? (int)$_POST['board_id'] : 0;
 $type = $_POST['type'] ?? 'anonymity';
@@ -33,7 +34,7 @@ if (mb_strlen($content) > 1000) {
 try {
     // 1. 게시글 존재 확인
     $stmt = $pdo->prepare("
-        SELECT id
+        SELECT id, user_id
         FROM boards
         WHERE id = :id
           AND board_type = :type
@@ -102,6 +103,57 @@ try {
         ':parent_id' => $parent_id,
         ':content' => $content
     ]);
+    $comment_id = (int)$pdo->lastInsertId();
+
+    $login_user_id = (int)$_SESSION['user_id'];
+
+
+// 일반 댓글
+if ($parent_id === null) {
+
+    $board_owner_id = (int)$post['user_id'];
+
+    // 자기 글 제외
+    if ($board_owner_id !== $login_user_id) {
+
+        create_notification(
+            $pdo,
+            $board_owner_id,
+            'comment',
+            $comment_id,
+            '회원님의 글에 새 댓글이 달렸습니다.',
+            "/board/view.php?id={$board_id}&type={$type}"
+        );
+    }
+
+} else {
+
+    // 부모 댓글 작성자 조회
+    $stmt = $pdo->prepare("
+        SELECT user_id
+        FROM comments
+        WHERE id = :id
+    ");
+
+    $stmt->execute([
+        ':id' => $parent_id
+    ]);
+
+    $parent_comment_user_id = (int)$stmt->fetchColumn();
+
+    // 자기 자신 제외
+    if ($parent_comment_user_id !== $login_user_id) {
+
+        create_notification(
+            $pdo,
+            $parent_comment_user_id,
+            'reply',
+            $comment_id,
+            '회원님의 댓글에 답글이 달렸습니다.',
+            "/board/view.php?id={$board_id}&type={$type}"
+        );
+    }
+}
 
     echo "<script>alert('댓글이 등록되었습니다.'); location.href='view.php?id={$board_id}&type={$type}';</script>";
     exit;

@@ -125,12 +125,13 @@ try {
 
     // ── 이번 주 인기 TOP 5 ───────────────────────────────────────
     $hot = $pdo->query("
-        SELECT q.id, q.content, q.like_count, b.title AS board_title
-        FROM quotes q
-        JOIN boards b ON q.board_id = b.id
-        WHERE q.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-        ORDER BY q.like_count DESC
-        LIMIT 5
+            SELECT q.id, q.content, q.like_count, b.title AS board_title
+            FROM quotes q
+            JOIN boards b ON q.board_id = b.id
+            WHERE q.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            AND (q.like_count > 0 OR q.highlight_count > 0)
+            ORDER BY q.like_count DESC
+            LIMIT 5
     ")->fetchAll(PDO::FETCH_ASSOC);
 
     // ── 많이 나온 글 TOP 8 ───────────────────────────────────────

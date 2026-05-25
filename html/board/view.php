@@ -215,13 +215,13 @@ include '../includes/header.php';
     gap: 6px;
 }
 #quote-popup button:hover { background: #333; }
-#quote-popup::after {
+#quote-popup::before {
     content: '';
     display: block;
     width: 0; height: 0;
     border-left: 7px solid transparent;
     border-right: 7px solid transparent;
-    border-top: 7px solid #1a1a1a;
+    border-bottom: 7px solid #1a1a1a; /* ← top → bottom 으로 변경 */
     margin: 0 auto;
 }
 
@@ -594,7 +594,7 @@ function handleSelection() {
     // 팝업 위치: 선택 영역 위쪽 중앙
     var popup = document.getElementById('quote-popup');
     popup.style.display = 'block';
-    popup.style.top  = (window.scrollY + rect.top - popup.offsetHeight - 10) + 'px';
+    popup.style.top  = (window.scrollY + rect.bottom + 10) + 'px';
     popup.style.left = (window.scrollX + rect.left + rect.width / 2) + 'px';
 }
 

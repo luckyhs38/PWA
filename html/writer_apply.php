@@ -1,13 +1,12 @@
 <?php
 // /writer_apply.php
 if (session_status() === PHP_SESSION_NONE) session_start();
-require_once 'includes/db.php';
-require_once 'includes/auth.php';
+require_once __DIR__ . '/includes/auth_check.php';
 
 // 로그인 필수
-require_login($pdo);
+require_login();
 
-$role    = get_current_role($pdo);
+$role = current_role();
 $user_id = (int)$_SESSION['user_id'];
 
 // 이미 작가/관리자면 접근 불필요

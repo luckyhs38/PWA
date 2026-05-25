@@ -14,6 +14,34 @@ if (!array_key_exists($type, $allowed_types)) {
 
 $board_name = $allowed_types[$type];
 
+// writing 게시판일 때 이달의 주제 조회
+$current_topic = null;
+if ($type === 'writing') {
+    try {
+        $now_year  = (int)date('Y');
+        $now_month = (int)date('n');
+
+        // 1순위: is_current = 1
+        $t = $pdo->query("SELECT * FROM monthly_topics WHERE is_current = 1 LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+
+        // 2순위: 현재 연월
+        if (!$t) {
+            $stmt = $pdo->prepare("SELECT * FROM monthly_topics WHERE theme_year = :y AND theme_month = :m LIMIT 1");
+            $stmt->execute([':y' => $now_year, ':m' => $now_month]);
+            $t = $stmt->fetch(PDO::FETCH_ASSOC);
+        }
+
+        // 3순위: 가장 최신
+        if (!$t) {
+            $t = $pdo->query("SELECT * FROM monthly_topics ORDER BY theme_year DESC, theme_month DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        }
+
+        $current_topic = $t ?: null;
+    } catch (PDOException $e) {
+        $current_topic = null;
+    }
+}
+
 // 2. 페이징 및 검색 변수 설정
 $page = max(1, isset($_GET['page']) ? (int)$_GET['page'] : 1);
 $limit = 10; // 한 페이지에 보여줄 글 개수
@@ -122,6 +150,53 @@ include '../includes/header.php';
     transform: translateY(-50%);
     font-size: 15px;
     color: #ccc;
+}
+
+/* 이달의 주제 배너 */
+.topic-banner {
+    border: 1px solid #1a1a1a;
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    background: #fff;
+}
+.topic-banner-left { display: flex; align-items: center; gap: 16px; }
+.topic-label {
+    font-size: 10px;
+    letter-spacing: .5px;
+    color: #fff;
+    background: #1a1a1a;
+    border-radius: 4px;
+    padding: 4px 8px;
+    white-space: nowrap;
+    font-family: sans-serif;
+}
+.topic-text {
+    font-family: 'Noto Serif KR', serif;
+    font-size: 20px;
+    font-weight: 500;
+    color: #1a1a1a;
+}
+.topic-desc {
+    font-size: 12px;
+    color: #aaa;
+    margin-top: 3px;
+    font-family: sans-serif;
+}
+.topic-month {
+    font-size: 12px;
+    color: #bbb;
+    font-family: sans-serif;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+    .topic-banner { flex-direction: column; align-items: flex-start; gap: 10px; }
 }
 
 /* ── 게시판 테이블 ── */
@@ -255,6 +330,32 @@ include '../includes/header.php';
             <i class="bi bi-search si"></i>
         </form>
     </div>
+
+    <?php if ($type === 'writing' && $current_topic): ?>
+    <?php
+        $month_names = [
+            1=>'JAN', 2=>'FEB', 3=>'MAR', 4=>'APR',
+            5=>'MAY', 6=>'JUN', 7=>'JUL', 8=>'AUG',
+            9=>'SEP', 10=>'OCT', 11=>'NOV', 12=>'DEC',
+        ];
+        $mon_str = ($month_names[(int)$current_topic['theme_month']] ?? '')
+                   . ' ' . $current_topic['theme_year'];
+    ?>
+    <div class="topic-banner">
+        <div class="topic-banner-left">
+            <span class="topic-label"><?= htmlspecialchars($mon_str) ?> TOPIC</span>
+            <div>
+                <div class="topic-text">"<?= htmlspecialchars($current_topic['title']) ?>"</div>
+                <?php if (!empty($current_topic['description'])): ?>
+                    <div class="topic-desc"><?= htmlspecialchars($current_topic['description']) ?></div>
+                <?php endif; ?>
+            </div>
+        </div>
+        <div class="topic-month">
+            <?= $current_topic['theme_year'] ?>.<?= str_pad($current_topic['theme_month'], 2, '0', STR_PAD_LEFT) ?>
+        </div>
+    </div>
+<?php endif; ?>
 
     <table class="board-table">
         <thead>

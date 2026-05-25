@@ -7,6 +7,43 @@ require_once __DIR__ . '/auth_check.php';
 
 $current = basename($_SERVER['PHP_SELF']);
 $is_logged_in = isset($_SESSION['user_id']);
+
+$unread_notification_count = 0;
+$notifications = [];
+
+if ($is_logged_in) {
+
+    // 안 읽은 개수
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*)
+        FROM notifications
+        WHERE user_id = :user_id
+          AND is_read = 0
+    ");
+
+    $stmt->execute([
+        ':user_id' => $_SESSION['user_id']
+    ]);
+
+    $unread_notification_count = (int)$stmt->fetchColumn();
+
+
+    // 최근 알림 목록
+    $stmt = $pdo->prepare("
+        SELECT *
+        FROM notifications
+        WHERE user_id = :user_id
+        ORDER BY id DESC
+        LIMIT 10
+    ");
+
+    $stmt->execute([
+        ':user_id' => $_SESSION['user_id']
+    ]);
+
+    $notifications = $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="ko">
@@ -150,6 +187,35 @@ $is_logged_in = isset($_SESSION['user_id']);
       color: #999;
       font-family: 'Noto Sans KR', sans-serif;
       font-weight: 300;
+    }
+
+    /* 알림 기능 */
+    #notifList .notif-item {
+        white-space: normal;
+        font-size: 13px;
+        line-height: 1.5;
+        padding: 10px 14px;
+        border-bottom: 1px solid #f5f5f5;
+    }
+
+    #notifList .notif-item.unread {
+        background: #fafafa;
+        font-weight: 400;
+    }
+
+    #notifList .notif-time {
+        font-size: 11px;
+        color: #bbb;
+        margin-top: 3px;
+    }
+    .notification-item {
+    display: flex !important;
+    justify-content: space-between;
+    align-items: center;
+    }
+    .notification-item .badge {
+    font-size: 10px;
+    min-width: 18px;
     }
 
     /* =====================
@@ -335,6 +401,51 @@ $is_logged_in = isset($_SESSION['user_id']);
       color: #ddd;
       font-size: 12px;
     }
+    /* 알림 기능 모바일 */
+    .mobile-bell {
+    position: relative;
+    color: #666;
+    font-size: 20px;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+}
+
+.mobile-bell:hover {
+    color: #000;
+}
+
+.mobile-bell-badge {
+    position: absolute;
+    top: -5px;
+    right: -8px;
+
+    min-width: 16px;
+    height: 16px;
+
+    border-radius: 999px;
+    background: #dc3545;
+    color: #fff;
+
+    font-size: 9px;
+    font-weight: 600;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 0 4px;
+}
+
+.mobile-notif-dropdown {
+    width: 280px;
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid #eee;
+    border-radius: 10px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+    padding: 6px 0;
+}
 
     /* =====================
        본문
@@ -354,12 +465,91 @@ $is_logged_in = isset($_SESSION['user_id']);
       <img src="/img/logo.png" alt="한글은 늘 도망가" class="navbar-logo">
     </a>
     <!-- 모바일: 햄버거 버튼 (오른쪽) -->
-    <button class="navbar-toggler border-0 d-lg-none"
-            type="button"
-            onclick="openMobileMenu()"
-            aria-label="메뉴 열기">
-      <span class="navbar-toggler-icon"></span>
-    </button>
+    <div class="d-flex align-items-center d-lg-none">
+
+<?php if ($is_logged_in): ?>
+<div class="dropdown">
+
+    <a href="#"
+       class="mobile-bell position-relative me-2"
+       role="button"
+       data-bs-toggle="dropdown"
+       aria-expanded="false">
+
+        <i class="bi bi-bell"></i>
+
+        <?php if ($unread_notification_count > 0): ?>
+            <span class="mobile-bell-badge">
+                <?= $unread_notification_count ?>
+            </span>
+        <?php endif; ?>
+    </a>
+
+    <ul class="dropdown-menu dropdown-menu-end mobile-notif-dropdown">
+
+        <li>
+            <h6 class="dropdown-header">알림</h6>
+        </li>
+
+        <?php if (empty($notifications)): ?>
+
+            <li>
+                <span class="dropdown-item-text small text-muted px-3">
+                    새로운 알림이 없습니다.
+                </span>
+            </li>
+
+        <?php else: ?>
+
+            <?php foreach ($notifications as $noti): ?>
+
+                <li>
+
+                    <a class="dropdown-item py-2 <?= !$noti['is_read'] ? 'bg-light' : '' ?>"
+                       href="/ajax/notification_read.php?id=<?= $noti['id'] ?>">
+
+                        <div class="small mb-1">
+                            <?= htmlspecialchars($noti['message']) ?>
+                        </div>
+
+                        <div class="text-muted"
+                             style="font-size:11px;">
+
+                            <?= date('m.d H:i', strtotime($noti['created_at'])) ?>
+
+                        </div>
+
+                    </a>
+
+                </li>
+
+            <?php endforeach; ?>
+
+        <?php endif; ?>
+
+        <li><hr class="dropdown-divider"></li>
+
+        <li>
+            <a class="dropdown-item text-center small text-muted"
+               href="/notifications.php">
+                전체 알림 보기
+            </a>
+        </li>
+
+    </ul>
+
+</div>
+<?php endif; ?>
+
+        <button class="navbar-toggler border-0"
+                type="button"
+                onclick="openMobileMenu()"
+                aria-label="메뉴 열기">
+
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+    </div>
 
     <!-- 데스크탑 메뉴 (ms-auto = 오른쪽 정렬) -->
     <div class="collapse navbar-collapse d-none d-lg-flex" id="mainNav">
@@ -443,7 +633,7 @@ $is_logged_in = isset($_SESSION['user_id']);
             <i class="bi bi-person icon-menu"></i>
           </a>
           <ul class="dropdown-menu dropdown-menu-end">
-<?php if ($is_logged_in): ?>
+            <?php if ($is_logged_in): ?>
               <?php if (is_admin()): ?>
               <li>
                 <a class="dropdown-item" href="/admin/index.php">
@@ -475,6 +665,87 @@ $is_logged_in = isset($_SESSION['user_id']);
             <?php endif; ?>
           </ul>
         </li>
+
+        <?php if ($is_logged_in): ?>
+
+        <li class="nav-item dropdown me-2">
+
+            <a class="nav-link position-relative px-1"
+              href="#"
+              role="button"
+              data-bs-toggle="dropdown"
+              aria-expanded="false">
+
+                <i class="bi bi-bell icon-menu"></i>
+
+                <?php if ($unread_notification_count > 0): ?>
+                    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+                          style="font-size:10px;">
+
+                        <?= $unread_notification_count ?>
+
+                    </span>
+                <?php endif; ?>
+
+            </a>
+
+            <ul class="dropdown-menu dropdown-menu-end"
+                style="width:320px; max-height:400px; overflow-y:auto;">
+
+                <li>
+                    <h6 class="dropdown-header">알림</h6>
+                </li>
+
+                <?php if (empty($notifications)): ?>
+
+                    <li>
+                        <span class="dropdown-item-text small text-muted px-3">
+                            새로운 알림이 없습니다.
+                        </span>
+                    </li>
+
+                <?php else: ?>
+
+                    <?php foreach ($notifications as $noti): ?>
+
+                        <li>
+
+                            <a class="dropdown-item py-2 <?= !$noti['is_read'] ? 'bg-light' : '' ?>"
+                              href="/ajax/notification_read.php?id=<?= $noti['id'] ?>">
+
+                                <div class="small mb-1">
+                                    <?= htmlspecialchars($noti['message']) ?>
+                                </div>
+
+                                <div class="text-muted"
+                                    style="font-size:11px;">
+
+                                    <?= date('m.d H:i', strtotime($noti['created_at'])) ?>
+
+                                </div>
+
+                            </a>
+
+                        </li>
+
+                    <?php endforeach; ?>
+
+                <?php endif; ?>
+
+                <li><hr class="dropdown-divider"></li>
+
+                <li>
+                    <a class="dropdown-item text-center small text-muted"
+                      href="/notifications.php">
+                        전체 알림 보기
+                    </a>
+                </li>
+
+            </ul>
+
+        </li>
+
+        <?php endif; ?>
 
         <!-- 검색 아이콘 -->
         <!-- <li class="nav-item ms-1">
@@ -636,6 +907,70 @@ $is_logged_in = isset($_SESSION['user_id']);
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') closeMobileMenu();
   });
+
+  // 알림 기능
+  <?php if ($is_logged_in): ?>
+
+    async function loadNotifications() {
+
+        try {
+
+            const res = await fetch('/ajax/get_notifications.php');
+            const data = await res.json();
+
+            const list = document.getElementById('notifList');
+            const badge = document.getElementById('notifBadge');
+
+            list.innerHTML = '';
+
+            if (data.length === 0) {
+
+                list.innerHTML = `
+                    <li class="dropdown-item text-muted small">
+                        알림이 없습니다.
+                    </li>
+                `;
+
+                badge.style.display = 'none';
+                return;
+            }
+
+            let unreadCount = 0;
+
+            data.forEach(item => {
+
+                if (item.is_read == 0) unreadCount++;
+
+                list.innerHTML += `
+                    <li>
+                        <a href="/board/view.php?id=${item.target_id}"
+                          class="dropdown-item notif-item ${item.is_read == 0 ? 'unread' : ''}">
+                            
+                            <div>${item.message}</div>
+
+                            <div class="notif-time">
+                                ${item.created_at}
+                            </div>
+                        </a>
+                    </li>
+                `;
+            });
+
+            if (unreadCount > 0) {
+                badge.style.display = 'inline-block';
+                badge.innerText = unreadCount;
+            } else {
+                badge.style.display = 'none';
+            }
+
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    loadNotifications();
+
+    <?php endif; ?>
 </script>
 
 <!-- 본문 시작 -->

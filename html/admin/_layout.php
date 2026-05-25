@@ -11,11 +11,12 @@ try {
 }
 
 $menus = [
-    'dashboard' => ['label' => '대시보드',     'icon' => 'bi-speedometer2',  'url' => '/admin/index.php'],
+    'dashboard' => ['label' => '대시보드',      'icon' => 'bi-speedometer2',  'url' => '/admin/index.php'],
     'users'     => ['label' => '회원 관리',     'icon' => 'bi-people',        'url' => '/admin/users.php'],
     'writers'   => ['label' => '작가 신청',     'icon' => 'bi-pencil-square', 'url' => '/admin/writer_list.php', 'badge' => $pending_writers],
     'qna'       => ['label' => '문의 관리',     'icon' => 'bi-chat-square-text', 'url' => '/admin/qna_list.php', 'badge' => $pending_qna],
     'posts'     => ['label' => '게시글 관리',   'icon' => 'bi-file-text',     'url' => '/admin/posts.php'],
+    'topics'     => ['label' => '월별 주제',    'icon' => 'bi-calendar-month',     'url' => '/admin/topics.php'],
     'stats'     => ['label' => '통계',          'icon' => 'bi-bar-chart',     'url' => '/admin/stats.php'],
 ];
 ?>
