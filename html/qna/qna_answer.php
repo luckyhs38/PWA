@@ -4,6 +4,7 @@
 // 1. DB 및 권한 체크 파일 포함
 require_once '../includes/db.php';
 require_once '../includes/auth_check.php';
+require_once '../includes/notifications.php';
 
 // 2. 관리자 권한 필수 체크 (auth_check.php의 함수 활용)
 // 관리자가 아니면 이 함수 내부에서 자동으로 차단 및 종료됩니다.
@@ -61,6 +62,9 @@ try {
         ':answer_content' => $answer_content,
         ':id' => $id
     ]);
+
+    //6-2. 답변 알람 기능  
+    notify_qna_answered($pdo, $id);
 
     // 7. 성공 처리 후 뷰 페이지로 리다이렉트
     echo "<script>alert('답변이 성공적으로 저장되었습니다.'); location.href='qna_view.php?id={$id}';</script>";

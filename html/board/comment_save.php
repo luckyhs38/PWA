@@ -105,55 +105,15 @@ try {
     ]);
     $comment_id = (int)$pdo->lastInsertId();
 
-    $login_user_id = (int)$_SESSION['user_id'];
+    notify_comment_created(
+        $pdo,
+        $board_id,
+        $type,
+        $comment_id,
+        (int)$_SESSION['user_id'],
+        $parent_id
+    );
 
-
-// 일반 댓글
-if ($parent_id === null) {
-
-    $board_owner_id = (int)$post['user_id'];
-
-    // 자기 글 제외
-    if ($board_owner_id !== $login_user_id) {
-
-        create_notification(
-            $pdo,
-            $board_owner_id,
-            'comment',
-            $comment_id,
-            '회원님의 글에 새 댓글이 달렸습니다.',
-            "/board/view.php?id={$board_id}&type={$type}"
-        );
-    }
-
-} else {
-
-    // 부모 댓글 작성자 조회
-    $stmt = $pdo->prepare("
-        SELECT user_id
-        FROM comments
-        WHERE id = :id
-    ");
-
-    $stmt->execute([
-        ':id' => $parent_id
-    ]);
-
-    $parent_comment_user_id = (int)$stmt->fetchColumn();
-
-    // 자기 자신 제외
-    if ($parent_comment_user_id !== $login_user_id) {
-
-        create_notification(
-            $pdo,
-            $parent_comment_user_id,
-            'reply',
-            $comment_id,
-            '회원님의 댓글에 답글이 달렸습니다.',
-            "/board/view.php?id={$board_id}&type={$type}"
-        );
-    }
-}
 
     echo "<script>alert('댓글이 등록되었습니다.'); location.href='view.php?id={$board_id}&type={$type}';</script>";
     exit;

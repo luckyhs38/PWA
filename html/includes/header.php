@@ -217,6 +217,48 @@ if ($is_logged_in) {
     font-size: 10px;
     min-width: 18px;
     }
+    /* 알림 항목: 메시지 + X 삭제 버튼 */
+.notif-row {
+    display: flex;
+    align-items: stretch;
+    border-bottom: 1px solid #f5f5f5;
+}
+
+.notif-row .notif-link {
+    flex: 1;
+    white-space: normal;
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 10px 12px 10px 14px;
+    text-decoration: none;
+    color: #333;
+}
+
+.notif-row.unread .notif-link {
+    background: #fafafa;
+    font-weight: 400;
+}
+
+.notif-delete-form {
+    display: flex;
+    align-items: center;
+    margin: 0;
+}
+
+.notif-delete-btn {
+    border: none;
+    background: transparent;
+    color: #bbb;
+    width: 34px;
+    height: 100%;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.notif-delete-btn:hover {
+    color: #dc3545;
+    background: #fff5f5;
+}
 
     /* =====================
        모바일 - 오른쪽 슬라이드 패널
@@ -501,40 +543,55 @@ if ($is_logged_in) {
 
         <?php else: ?>
 
-            <?php foreach ($notifications as $noti): ?>
+          <?php foreach ($notifications as $noti): ?>
 
-                <li>
+              <li class="notif-row <?= !$noti['is_read'] ? 'unread' : '' ?>">
 
-                    <a class="dropdown-item py-2 <?= !$noti['is_read'] ? 'bg-light' : '' ?>"
-                       href="/ajax/notification_read.php?id=<?= $noti['id'] ?>">
+                  <a class="notif-link"
+                    href="/ajax/notification_read.php?id=<?= (int)$noti['id'] ?>">
 
-                        <div class="small mb-1">
-                            <?= htmlspecialchars($noti['message']) ?>
-                        </div>
+                      <div class="small mb-1">
+                          <?= htmlspecialchars($noti['message']) ?>
+                      </div>
 
-                        <div class="text-muted"
-                             style="font-size:11px;">
+                      <div class="text-muted" style="font-size:11px;">
+                          <?= date('m.d H:i', strtotime($noti['created_at'])) ?>
+                      </div>
 
-                            <?= date('m.d H:i', strtotime($noti['created_at'])) ?>
+                  </a>
 
-                        </div>
+                  <form method="post"
+                        action="/ajax/notification_delete.php"
+                        class="notif-delete-form"
+                        onsubmit="return confirm('이 알림을 삭제하시겠습니까?');">
+                      <input type="hidden" name="action" value="single">
+                      <input type="hidden" name="id" value="<?= (int)$noti['id'] ?>">
+                      <button type="submit" class="notif-delete-btn" title="알림 삭제">
+                          <i class="bi bi-x"></i>
+                      </button>
+                  </form>
 
-                    </a>
+              </li>
 
-                </li>
-
-            <?php endforeach; ?>
+          <?php endforeach; ?>
 
         <?php endif; ?>
 
-        <li><hr class="dropdown-divider"></li>
+<?php if (!empty($notifications)): ?>
+    <li><hr class="dropdown-divider"></li>
 
-        <li>
-            <a class="dropdown-item text-center small text-muted"
-               href="/notifications.php">
-                전체 알림 보기
-            </a>
-        </li>
+    <li>
+        <form method="post" action="/ajax/notification_delete.php" class="m-0">
+            <input type="hidden" name="action" value="all">
+            <button 
+                type="submit"
+                class="dropdown-item text-center small text-danger"
+                onclick="return confirm('알림을 모두 삭제하시겠습니까?');">
+                알림 전체 삭제
+            </button>
+        </form>
+    </li>
+<?php endif; ?>
 
     </ul>
 
@@ -706,40 +763,55 @@ if ($is_logged_in) {
 
                 <?php else: ?>
 
-                    <?php foreach ($notifications as $noti): ?>
+                  <?php foreach ($notifications as $noti): ?>
 
-                        <li>
+                      <li class="notif-row <?= !$noti['is_read'] ? 'unread' : '' ?>">
 
-                            <a class="dropdown-item py-2 <?= !$noti['is_read'] ? 'bg-light' : '' ?>"
-                              href="/ajax/notification_read.php?id=<?= $noti['id'] ?>">
+                          <a class="notif-link"
+                            href="/ajax/notification_read.php?id=<?= (int)$noti['id'] ?>">
 
-                                <div class="small mb-1">
-                                    <?= htmlspecialchars($noti['message']) ?>
-                                </div>
+                              <div class="small mb-1">
+                                  <?= htmlspecialchars($noti['message']) ?>
+                              </div>
 
-                                <div class="text-muted"
-                                    style="font-size:11px;">
+                              <div class="text-muted" style="font-size:11px;">
+                                  <?= date('m.d H:i', strtotime($noti['created_at'])) ?>
+                              </div>
 
-                                    <?= date('m.d H:i', strtotime($noti['created_at'])) ?>
+                          </a>
 
-                                </div>
+                          <form method="post"
+                                action="/ajax/notification_delete.php"
+                                class="notif-delete-form"
+                                onsubmit="return confirm('이 알림을 삭제하시겠습니까?');">
+                              <input type="hidden" name="action" value="single">
+                              <input type="hidden" name="id" value="<?= (int)$noti['id'] ?>">
+                              <button type="submit" class="notif-delete-btn" title="알림 삭제">
+                                  <i class="bi bi-x"></i>
+                              </button>
+                          </form>
 
-                            </a>
+                      </li>
 
-                        </li>
-
-                    <?php endforeach; ?>
+                  <?php endforeach; ?>
 
                 <?php endif; ?>
 
-                <li><hr class="dropdown-divider"></li>
+<?php if (!empty($notifications)): ?>
+    <li><hr class="dropdown-divider"></li>
 
-                <li>
-                    <a class="dropdown-item text-center small text-muted"
-                      href="/notifications.php">
-                        전체 알림 보기
-                    </a>
-                </li>
+    <li>
+        <form method="post" action="/ajax/notification_delete.php" class="m-0">
+            <input type="hidden" name="action" value="all">
+            <button 
+                type="submit"
+                class="dropdown-item text-center small text-danger"
+                onclick="return confirm('알림을 모두 삭제하시겠습니까?');">
+                알림 전체 삭제
+            </button>
+        </form>
+    </li>
+<?php endif; ?>
 
             </ul>
 
@@ -908,69 +980,6 @@ if ($is_logged_in) {
     if (e.key === 'Escape') closeMobileMenu();
   });
 
-  // 알림 기능
-  <?php if ($is_logged_in): ?>
-
-    async function loadNotifications() {
-
-        try {
-
-            const res = await fetch('/ajax/get_notifications.php');
-            const data = await res.json();
-
-            const list = document.getElementById('notifList');
-            const badge = document.getElementById('notifBadge');
-
-            list.innerHTML = '';
-
-            if (data.length === 0) {
-
-                list.innerHTML = `
-                    <li class="dropdown-item text-muted small">
-                        알림이 없습니다.
-                    </li>
-                `;
-
-                badge.style.display = 'none';
-                return;
-            }
-
-            let unreadCount = 0;
-
-            data.forEach(item => {
-
-                if (item.is_read == 0) unreadCount++;
-
-                list.innerHTML += `
-                    <li>
-                        <a href="/board/view.php?id=${item.target_id}"
-                          class="dropdown-item notif-item ${item.is_read == 0 ? 'unread' : ''}">
-                            
-                            <div>${item.message}</div>
-
-                            <div class="notif-time">
-                                ${item.created_at}
-                            </div>
-                        </a>
-                    </li>
-                `;
-            });
-
-            if (unreadCount > 0) {
-                badge.style.display = 'inline-block';
-                badge.innerText = unreadCount;
-            } else {
-                badge.style.display = 'none';
-            }
-
-        } catch (e) {
-            console.error(e);
-        }
-    }
-
-    loadNotifications();
-
-    <?php endif; ?>
 </script>
 
 <!-- 본문 시작 -->
