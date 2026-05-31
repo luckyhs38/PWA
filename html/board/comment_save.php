@@ -113,6 +113,10 @@ try {
         (int)$_SESSION['user_id'],
         $parent_id
     );
+        //알림 
+        require_once '../includes/notification_helper.php';
+        $view_url = "/board/view.php?id={$board_id}&type={$type}";
+        send_comment_notification($pdo, $board_id, $_SESSION['user_id'], $content, $view_url);
 
 
     echo "<script>alert('댓글이 등록되었습니다.'); location.href='view.php?id={$board_id}&type={$type}';</script>";

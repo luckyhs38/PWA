@@ -180,6 +180,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $board_id = $pdo->lastInsertId();
                 $message = '게시글이 등록되었습니다.';
+
+                //알림
+                require_once '../includes/notification_helper.php';
+                $view_url = "/board/view.php?id={$board_id}&type={$type}";
+                send_new_post_notification($pdo, $type, $_SESSION['user_id'], $board_id, $title, $view_url);
+
             }
 
             $pdo->commit();

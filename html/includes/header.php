@@ -51,6 +51,9 @@ if ($is_logged_in) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>한글은 늘 도망가</title>
+    <!-- 파비콘 -->
+    <link rel="icon" href="/img/logo.png" type="image/png">
+    <link rel="apple-touch-icon" href="/img/logo.png">
 
     <!-- jQuery (Summernote 및 모바일 기능을 위해 유지) -->
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
@@ -529,9 +532,14 @@ if ($is_logged_in) {
 
     <ul class="dropdown-menu dropdown-menu-end mobile-notif-dropdown">
 
-        <li>
-            <h6 class="dropdown-header">알림</h6>
-        </li>
+    <li class="d-flex justify-content-between align-items-center pe-3"> 
+        <h6 class="dropdown-header m-0">알림</h6> 
+        <?php if (isset($_SESSION['user_id'])): ?>
+            <button id="fcm-allow-btn-mobile" class="btn btn-sm btn-outline-secondary" style="font-size:11px; padding:3px 8px; border-radius:999px; line-height:1.2;">
+                <i class="bi bi-bell-fill"></i> 푸시 켜기
+            </button>
+        <?php endif; ?>
+    </li>
 
         <?php if (empty($notifications)): ?>
 
@@ -749,9 +757,14 @@ if ($is_logged_in) {
             <ul class="dropdown-menu dropdown-menu-end"
                 style="width:320px; max-height:400px; overflow-y:auto;">
 
-                <li>
-                    <h6 class="dropdown-header">알림</h6>
-                </li>
+            <li class="d-flex justify-content-between align-items-center pe-3">
+                <h6 class="dropdown-header m-0">알림</h6> 
+                <?php if (isset($_SESSION['user_id'])): ?>
+                    <button id="fcm-allow-btn" class="btn btn-sm btn-outline-secondary" style="font-size:11px; padding:3px 8px; border-radius:999px; line-height:1.2;">
+                        <i class="bi bi-bell-fill"></i> 푸시 켜기
+                    </button>
+                <?php endif; ?>
+            </li>
 
                 <?php if (empty($notifications)): ?>
 
@@ -796,7 +809,7 @@ if ($is_logged_in) {
                   <?php endforeach; ?>
 
                 <?php endif; ?>
-
+                
 <?php if (!empty($notifications)): ?>
     <li><hr class="dropdown-divider"></li>
 
@@ -812,6 +825,8 @@ if ($is_logged_in) {
         </form>
     </li>
 <?php endif; ?>
+
+
 
             </ul>
 
@@ -981,6 +996,7 @@ if ($is_logged_in) {
   });
 
 </script>
-
+<!-- FCM 초기화 -->
+<?php include __DIR__ . '/fcm_script.php'; ?>
 <!-- 본문 시작 -->
 <!-- <main class="flex-fill d-flex align-items-center"> -->

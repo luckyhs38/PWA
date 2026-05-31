@@ -1,0 +1,14 @@
+# /includes/.htaccess
+# 이 폴더의 모든 파일에 직접 URL 접근 차단
+
+# 기존 (db.php 차단)
+<Files "db.php">
+    Order allow,deny
+    Deny from all
+</Files>
+
+# 추가
+<Files "*.json">
+    Order allow,deny
+    Deny from all
+</Files>

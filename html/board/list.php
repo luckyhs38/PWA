@@ -95,6 +95,18 @@ try {
     die("목록 조회 오류: " . $e->getMessage());
 }
 
+// 게시판 구독 여부 확인
+$is_board_subscribed = false;
+if (isset($_SESSION['user_id'])) {
+    $stmt = $pdo->prepare("
+        SELECT id FROM board_subscriptions
+        WHERE user_id = :uid AND board_type = :type
+    ");
+    $stmt->execute([':uid' => $_SESSION['user_id'], ':type' => $type]);
+    $is_board_subscribed = (bool)$stmt->fetch();
+}
+
+
 // 부모 디렉토리의 헤더 포함
 include '../includes/header.php'; 
 ?>
@@ -303,32 +315,89 @@ include '../includes/header.php';
 @media (max-width: 600px) {
     .board-wrap { margin-top: 80px; padding: 0 15px; }
     .board-top { flex-direction: column; align-items: flex-start; gap: 14px; }
-    .board-search-wrap, .board-search-wrap input { width: 100%; }
+    
+    /* 💡 [수정됨] 우측 영역: 모바일에서도 가로(row) 배치 유지 */
+    .board-top-right { 
+        width: 100%; 
+        flex-direction: row; 
+        align-items: center; 
+        gap: 8px; /* 간격 살짝 줄임 */
+    }
+    
+    /* 검색창이 남은 여백을 꽉 채우도록 설정 */
+    .board-search-wrap { flex: 1; margin: 0; }
+    .board-search-wrap input { width: 100%; }
+    
+    /* 모바일에서는 버튼 크기를 살짝 줄이고, 글자가 두 줄로 깨지지 않게 방지 */
+    .btn-subscribe { 
+        padding: 8px 12px; 
+        font-size: 12px; 
+        white-space: nowrap; 
+    }
     
     /* 모바일에서는 불필요한 정보 숨김 */
     .td-num, .td-author, .td-views, .th-num, .th-author, .th-views { display: none; }
     .td-title { padding-left: 0; font-size: 15px; }
     .td-date { text-align: right !important; padding-right: 0; }
 }
+.board-top-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.btn-subscribe {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid #ddd;
+    background: #fff;
+    border-radius: 999px;
+    padding: 8px 18px;
+    font-size: 13px;
+    color: #888;
+    cursor: pointer;
+    font-family: sans-serif;
+    transition: all .15s;
+}
+.btn-subscribe:hover { border-color: #aaa; color: #333; }
+.btn-subscribe.subscribed {
+    border-color: #1a1a1a;
+    color: #1a1a1a;
+    background: #fff;
+}
 </style>
 
 <div class="board-wrap">
 
-    <div class="board-top">
+<div class="board-top">
         <div>
             <div class="board-title"><?= htmlspecialchars($board_name) ?></div>
             <div class="board-sub">원하는 이야기를 자유롭게 나누어 보세요</div>
         </div>
         
-        <form action="list.php" method="GET" class="board-search-wrap">
-            <input type="hidden" name="type" value="<?= htmlspecialchars($type) ?>">
-            <input 
-                type="text" 
-                name="search" 
-                value="<?= htmlspecialchars($search) ?>" 
-                placeholder="제목/내용 검색">
-            <i class="bi bi-search si"></i>
-        </form>
+        <div class="board-top-right">
+            <?php if (isset($_SESSION['user_id'])): ?>
+                <button
+                    type="button"
+                    id="board-subscribe-btn"
+                    class="btn-subscribe <?= $is_board_subscribed ? 'subscribed' : '' ?>"
+                    data-board-type="<?= htmlspecialchars($type) ?>"
+                    onclick="toggleBoardSubscribe(this)">
+                    <i class="bi <?= $is_board_subscribed ? 'bi-bell-fill' : 'bi-bell' ?>"></i>
+                    <?= $is_board_subscribed ? '알림 받는 중' : '새 글 알림 받기' ?>
+                </button>
+            <?php endif; ?>
+
+            <form action="list.php" method="GET" class="board-search-wrap m-0">
+                <input type="hidden" name="type" value="<?= htmlspecialchars($type) ?>">
+                <input 
+                    type="text" 
+                    name="search" 
+                    value="<?= htmlspecialchars($search) ?>" 
+                    placeholder="제목/내용 검색">
+                <i class="bi bi-search si"></i>
+            </form>
+        </div>
     </div>
 
     <?php if ($type === 'writing' && $current_topic): ?>
@@ -405,11 +474,13 @@ include '../includes/header.php';
         </tbody>
     </table>
 
-    <div class="board-actions">
-        <a href="write.php?type=<?= $type ?>" class="btn-write">
-            <i class="bi bi-pencil-fill"></i> 글쓰기
-        </a>
-    </div>
+    
+
+<div class="board-actions">
+    <a href="write.php?type=<?= $type ?>" class="btn-write">
+        <i class="bi bi-pencil-fill"></i> 글쓰기
+    </a>
+</div>
 
     <?php if ($total_pages > 1): ?>
     <div class="pagination-wrap">
@@ -439,5 +510,33 @@ include '../includes/header.php';
     <?php endif; ?>
 
 </div>
+
+<script>
+function toggleBoardSubscribe(btn) {
+    fetch('/board/board_subscribe.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ board_type: btn.dataset.boardType })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) {
+            alert(data.error || '오류가 발생했습니다.');
+            return;
+        }
+        
+        if (data.subscribed) {
+            btn.classList.add('subscribed');
+            btn.innerHTML = '<i class="bi bi-bell-fill"></i> 알림 받는 중';
+        } else {
+            btn.classList.remove('subscribed');
+            btn.innerHTML = '<i class="bi bi-bell"></i> 새 글 알림 받기';
+        }
+    })
+    .catch(err => {
+        console.error('구독 토글 에러:', err);
+    });
+}
+</script>
 
 <?php include '../includes/footer.php'; ?>
